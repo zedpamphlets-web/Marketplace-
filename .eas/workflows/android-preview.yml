@@ -1,0 +1,13 @@
+name: Android preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['main']
+
+jobs:
+  build_android:
+    type: build
+    params:
+      platform: android
+      profile: preview
