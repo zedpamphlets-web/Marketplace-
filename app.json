@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Marketplace",
-    "slug": "marketplace-app",
+    "slug": "victor08",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -21,11 +21,11 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.yourcompany.marketplaceapp",
+      "bundleIdentifier": "com.zedpamphlets.marketplace",
       "buildNumber": "1"
     },
     "android": {
-      "package": "com.yourcompany.marketplaceapp",
+      "package": "com.zedpamphlets.marketplace",
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -52,11 +52,11 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "YOUR-EAS-PROJECT-ID"
+        "projectId": "513a8064-14d4-41ea-af65-8c9c1a461646"
       },
       "supabaseUrl": "",
       "supabaseAnonKey": "",
       "paymentApiUrl": ""
     }
   }
-}
+    }
