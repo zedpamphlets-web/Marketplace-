@@ -37,6 +37,14 @@
       "expo-router",
       "expo-secure-store",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
@@ -60,4 +68,4 @@
       "paymentApiUrl": ""
     }
   }
-}
+        }
