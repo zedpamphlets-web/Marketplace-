@@ -1,12 +1,14 @@
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
+import { decode } from "base64-arraybuffer";
 import { supabase } from "@/lib/supabase";
 
 export type ImageKind = "icon" | "banner" | "product";
 
 const QUALITY: Record<ImageKind, number> = {
-  icon: 0.45, // small category icons — light load
-  banner: 0.55, // home banners — balanced
-  product: 0.65, // product photos
+  icon: 0.45,
+  banner: 0.55,
+  product: 0.65,
 };
 
 /** Open gallery, crop, return local URI (compressed by quality). */
@@ -34,7 +36,10 @@ export async function pickImageFromPhone(
   }
 }
 
-/** Upload a local image URI to Supabase Storage and return public URL. */
+/**
+ * Upload a local image URI to Supabase Storage and return public URL.
+ * Uses base64 → ArrayBuffer (required on React Native; fetch(uri).blob() fails).
+ */
 export async function uploadImageFromUri(
   uri: string,
   folder: string,
@@ -43,27 +48,54 @@ export async function uploadImageFromUri(
   try {
     const name = fileName || `${Date.now()}.jpg`;
     const path = `${folder}/${name}`;
-    const res = await fetch(uri);
-    const blob = await res.blob();
-    const contentType = blob.type || "image/jpeg";
 
-    const { error } = await supabase.storage.from("public-assets").upload(path, blob, {
+    // Read file as base64 — works with file:// and content:// URIs on device
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (!base64) {
+      return { url: null, error: "Could not read image file" };
+    }
+
+    const arrayBuffer = decode(base64);
+    const contentType = name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+
+    // Prefer public-assets, fall back to images (both documented in schema)
+    let uploadedBucket = "public-assets";
+    const { error } = await supabase.storage.from("public-assets").upload(path, arrayBuffer, {
       contentType,
       upsert: true,
     });
+
     if (error) {
-      const retry = await supabase.storage.from("images").upload(path, blob, {
+      const retry = await supabase.storage.from("images").upload(path, arrayBuffer, {
         contentType,
         upsert: true,
       });
-      if (retry.error) return { url: null, error: retry.error.message || error.message };
-      const { data } = supabase.storage.from("images").getPublicUrl(path);
-      return { url: data.publicUrl, error: null };
+      if (retry.error) {
+        return {
+          url: null,
+          error:
+            retry.error.message ||
+            error.message ||
+            "Upload failed. Check Storage bucket + policies in Supabase.",
+        };
+      }
+      uploadedBucket = "images";
     }
-    const { data } = supabase.storage.from("public-assets").getPublicUrl(path);
+
+    const { data } = supabase.storage.from(uploadedBucket).getPublicUrl(path);
     return { url: data.publicUrl, error: null };
   } catch (e: any) {
-    return { url: null, error: e?.message || "Upload failed" };
+    const msg = e?.message || "Upload failed";
+    // Surface the classic RN failure more clearly
+    if (/network request failed/i.test(msg)) {
+      return {
+        url: null,
+        error: "Could not read image on device. Try another photo or restart the app.",
+      };
+    }
+    return { url: null, error: msg };
   }
 }
 

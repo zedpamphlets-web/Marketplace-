@@ -126,7 +126,11 @@ export default function AdminBanners() {
             <Text style={styles.clear}>Remove image</Text>
           </Pressable>
         ) : null}
-        {message ? <Text style={styles.msg}>{message}</Text> : null}
+        {message ? (
+          <Text style={[styles.msg, /live|success|saved/i.test(message) ? styles.msgOk : styles.msgErr]}>
+            {message}
+          </Text>
+        ) : null}
         <PrimaryButton label="Post banner" onPress={save} loading={saving} />
 
         <Text style={styles.heading}>Live banners</Text>
@@ -184,7 +188,9 @@ const styles = StyleSheet.create({
   pickText: { color: colors.primary, fontFamily: typography.bodySemibold },
   preview: { width: "100%", height: "100%" },
   clear: { color: colors.danger, fontFamily: typography.bodySemibold, marginBottom: 8 },
-  msg: { color: colors.primary, marginVertical: 8 },
+  msg: { marginVertical: 8, fontFamily: typography.bodyMedium },
+  msgOk: { color: colors.success },
+  msgErr: { color: colors.danger },
   heading: { marginTop: 22, marginBottom: 8, fontFamily: typography.displaySemibold, color: colors.adminText, fontSize: typography.h3 },
   row: {
     flexDirection: "row",
