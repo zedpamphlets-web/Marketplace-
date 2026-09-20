@@ -8,7 +8,7 @@ import { AppMenu } from "@/components/AppMenu";
 
 function BellIcon() {
   return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#F8FAFC" strokeWidth={2}>
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.adminText} strokeWidth={2}>
       <Path
         d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
         strokeLinecap="round"
@@ -37,7 +37,7 @@ export function AdminShell({
       <AppMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
       <View style={styles.topRow}>
         <Pressable onPress={() => setMenuOpen(true)} style={styles.iconBtn} hitSlop={10}>
-          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#F8FAFC" strokeWidth={2}>
+          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.adminText} strokeWidth={2}>
             <Path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
           </Svg>
         </Pressable>
@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     backgroundColor: colors.adminSurface,
     borderBottomWidth: 1,
-    borderBottomColor: "#1F2937",
+    borderBottomColor: colors.border,
   },
   iconBtn: {
     minWidth: 40,

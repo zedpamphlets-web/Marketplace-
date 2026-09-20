@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
@@ -164,7 +164,7 @@ const styles = StyleSheet.create({
     width: 100,
     borderRadius: 50,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: colors.border,
     backgroundColor: colors.adminCard,
     alignItems: "center",
     justifyContent: "center",

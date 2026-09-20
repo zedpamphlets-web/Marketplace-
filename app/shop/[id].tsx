@@ -40,10 +40,12 @@ export default function ShopDetailScreen() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [networkError, setNetworkError] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
+      setNetworkError(false);
       const { data: shopRow } = await supabase
         .from("shops")
         .select("id, name, logo_url, banner_1, category, rating, is_open")
@@ -71,6 +73,7 @@ export default function ShopDetailScreen() {
       }));
       setProducts(mapped);
     } catch (e) {
+      setNetworkError(true);
       console.warn("Shop load error:", e);
       setShop(null);
       setProducts([]);
@@ -161,17 +164,12 @@ export default function ShopDetailScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />
         }
       >
-        {/* Promo banner */}
-        <View style={styles.promo}>
-          {shop.banner_1 ? (
+        {/* Promo banner — only shown when banner_1 exists */}
+        {shop.banner_1 ? (
+          <View style={styles.promo}>
             <Image source={{ uri: shop.banner_1 }} style={styles.promoImg} contentFit="cover" />
-          ) : (
-            <View style={styles.promoFallback}>
-              <Text style={styles.promoTitle}>New Season{"\n"}Collection</Text>
-              <Text style={styles.promoSub}>Up to 30% OFF · Shop Now ›</Text>
-            </View>
-          )}
-        </View>
+          </View>
+        ) : null}
 
         {/* Category pills */}
         <ScrollView

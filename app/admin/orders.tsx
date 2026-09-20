@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: colors.border,
   },
   id: { color: colors.adminText, fontFamily: typography.bodyBold, marginBottom: 4 },
   meta: { color: colors.adminMuted, fontSize: typography.tiny, marginBottom: 4 },
