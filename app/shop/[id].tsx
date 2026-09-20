@@ -126,7 +126,7 @@ export default function ShopDetailScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
-          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.text} strokeWidth={2}>
+          <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={colors.text} strokeWidth={2}>
             <Path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
           </Svg>
         </Pressable>

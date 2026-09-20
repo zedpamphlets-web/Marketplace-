@@ -79,10 +79,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.xs,
     maxWidth: "100%",
   },
-  icon: { fontSize: 8, lineHeight: 11 },
+  icon: { fontSize: 10, lineHeight: 13 },
   label: {
-    fontSize: 8,
-    lineHeight: 11,
+    fontSize: 10,
+    lineHeight: 13,
     fontFamily: typography.bodyBold,
     letterSpacing: 0.2,
   },
@@ -95,6 +95,6 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.pill,
   },
-  optionIcon: { fontSize: 11 },
-  optionLabel: { fontSize: 11, fontFamily: typography.bodySemibold },
+  optionIcon: { fontSize: 13 },
+  optionLabel: { fontSize: 13, fontFamily: typography.bodySemibold },
 });

@@ -58,13 +58,13 @@ export const typography = {
   bodyMedium: "Inter_500Medium",
   bodySemibold: "Inter_600SemiBold",
   bodyBold: "Inter_700Bold",
-  h1: 28,
-  h2: 22,
-  h3: 18,
-  body: 15,
-  small: 13,
-  tiny: 11,
-  micro: 10,
+  h1: 30,
+  h2: 24,
+  h3: 20,
+  body: 16,
+  small: 14,
+  tiny: 12,
+  micro: 11,
 };
 
 export const shadow = {

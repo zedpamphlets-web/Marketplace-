@@ -69,7 +69,7 @@ export function ProductCard({ product, variant = "home", onAddToCart }: Props) {
         </View>
 
         <Pressable onPress={handleAdd} style={styles.cartIconBtn} hitSlop={8}>
-          <CartIcon size={15} color={colors.primary} />
+          <CartIcon size={17} color={colors.primary} />
         </Pressable>
       </View>
 
@@ -151,26 +151,26 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 8,
     right: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.border,
   },
-  body: { padding: 8 },
+  body: { padding: 10 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 3 },
-  star: { color: "#F59E0B", fontSize: 11 },
-  rating: { fontSize: 11, fontFamily: typography.bodySemibold, color: colors.text },
-  shopMini: { flex: 1, fontSize: 10, color: colors.textFaint, marginLeft: 4 },
+  star: { color: "#F59E0B", fontSize: 13 },
+  rating: { fontSize: 13, fontFamily: typography.bodySemibold, color: colors.text },
+  shopMini: { flex: 1, fontSize: 11, color: colors.textFaint, marginLeft: 4 },
   name: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: typography.bodyMedium,
     color: colors.text,
-    lineHeight: 16,
-    minHeight: 32,
+    lineHeight: 17,
+    minHeight: 34,
     marginBottom: 4,
   },
   priceRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.bodyBold,
     color: "#EA580C",
   },
-  sold: { fontSize: 10, color: colors.textMuted, fontFamily: typography.bodyMedium },
+  sold: { fontSize: 11, color: colors.textMuted, fontFamily: typography.bodyMedium },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",

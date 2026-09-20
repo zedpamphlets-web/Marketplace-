@@ -3,7 +3,7 @@ import Svg, { Path, Circle, Rect } from "react-native-svg";
 import { colors, typography } from "@/lib/theme";
 
 function TabIcon({ name, color }: { name: string; color: string }) {
-  const size = 22;
+  const size = 24;
   switch (name) {
     case "home":
       return (
@@ -56,9 +56,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: 60,
+          height: 64,
           paddingTop: 6,
-          paddingBottom: 8,
+          paddingBottom: 10,
           backgroundColor: colors.surface,
         },
       }}
