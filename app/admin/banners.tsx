@@ -1,11 +1,11 @@
 import React, { useCallback, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, RefreshControl } from "react-native";
 import { Image } from "expo-image";
+import { router, useFocusEffect } from "expo-router";
 import { colors, spacing, radius, typography } from "@/lib/theme";
 import { AdminShell } from "@/components/AdminShell";
 import { PrimaryButton, EmptyState } from "@/components/Shared";
 import { supabase } from "@/lib/supabase";
-import { useFocusEffect } from "expo-router";
 import { pickImageFromPhone, uploadImageFromUri } from "@/lib/uploadImage";
 
 type Banner = {
@@ -110,11 +110,25 @@ export default function AdminBanners() {
         }
       >
         <Text style={styles.label}>Title</Text>
-        <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Up to 20% off" placeholderTextColor={colors.adminMuted} />
+        <TextInput
+          style={styles.input}
+          value={title}
+          onChangeText={setTitle}
+          placeholder="e.g. Up to 50% off"
+          placeholderTextColor={colors.adminMuted}
+        />
+
         <Text style={styles.label}>Subtitle</Text>
-        <TextInput style={styles.input} value={subtitle} onChangeText={setSubtitle} placeholder="Limited time · Shop now" placeholderTextColor={colors.adminMuted} />
+        <TextInput
+          style={styles.input}
+          value={subtitle}
+          onChangeText={setSubtitle}
+          placeholder="Optional subtitle"
+          placeholderTextColor={colors.adminMuted}
+        />
+
         <Text style={styles.label}>Banner image (from phone)</Text>
-        <Pressable style={styles.pickBtn} onPress={pick}>
+        <Pressable onPress={pick} style={styles.pickBtn}>
           {localImage ? (
             <Image source={{ uri: localImage }} style={styles.preview} contentFit="cover" />
           ) : (
@@ -126,11 +140,18 @@ export default function AdminBanners() {
             <Text style={styles.clear}>Remove image</Text>
           </Pressable>
         ) : null}
+
         {message ? (
-          <Text style={[styles.msg, /live|success|saved/i.test(message) ? styles.msgOk : styles.msgErr]}>
+          <Text
+            style={[
+              styles.msg,
+              /live|success|saved/i.test(message) ? styles.msgOk : styles.msgErr,
+            ]}
+          >
             {message}
           </Text>
         ) : null}
+
         <PrimaryButton label="Post banner" onPress={save} loading={saving} />
 
         <Text style={styles.heading}>Live banners</Text>
@@ -142,12 +163,18 @@ export default function AdminBanners() {
               {b.image_url ? (
                 <Image source={{ uri: b.image_url }} style={styles.thumb} contentFit="cover" />
               ) : (
-                <View style={[styles.thumb, { backgroundColor: "#334155" }]} />
+                <View style={[styles.thumb, { backgroundColor: colors.border }]} />
               )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{b.title}</Text>
                 <Text style={styles.sub}>{b.is_active ? "Showing on Home" : "Hidden"}</Text>
               </View>
+              <Pressable
+                onPress={() => router.push(`/admin/banner-products/${b.id}` as any)}
+                style={styles.btn}
+              >
+                <Text style={styles.btnText}>Products</Text>
+              </Pressable>
               <Pressable onPress={() => toggle(b)} style={styles.btn}>
                 <Text style={styles.btnText}>{b.is_active ? "Hide" : "Show"}</Text>
               </Pressable>
@@ -164,7 +191,12 @@ export default function AdminBanners() {
 
 const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: 40 },
-  label: { fontFamily: typography.bodySemibold, marginBottom: 6, marginTop: spacing.md, color: colors.adminText },
+  label: {
+    fontFamily: typography.bodySemibold,
+    marginBottom: 6,
+    marginTop: spacing.md,
+    color: colors.adminText,
+  },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -191,11 +223,17 @@ const styles = StyleSheet.create({
   msg: { marginVertical: 8, fontFamily: typography.bodyMedium },
   msgOk: { color: colors.success },
   msgErr: { color: colors.danger },
-  heading: { marginTop: 22, marginBottom: 8, fontFamily: typography.displaySemibold, color: colors.adminText, fontSize: typography.h3 },
+  heading: {
+    marginTop: 22,
+    marginBottom: 8,
+    fontFamily: typography.displaySemibold,
+    color: colors.adminText,
+    fontSize: typography.h3,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
@@ -206,6 +244,6 @@ const styles = StyleSheet.create({
   thumb: { width: 56, height: 36, borderRadius: 6 },
   name: { fontFamily: typography.bodySemibold, color: colors.adminText },
   sub: { fontSize: typography.tiny, color: colors.adminMuted },
-  btn: { paddingHorizontal: 8, paddingVertical: 6 },
-  btnText: { fontFamily: typography.bodySemibold, color: colors.primary },
+  btn: { paddingHorizontal: 6, paddingVertical: 6 },
+  btnText: { fontFamily: typography.bodySemibold, color: colors.primary, fontSize: typography.small },
 });

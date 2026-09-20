@@ -135,3 +135,19 @@ create policy "riders_insert_authenticated" on public.riders
 
 create policy "riders_update_authenticated" on public.riders
   for update to authenticated using (true);
+
+-- Banner ↔ product links (promotions)
+create table if not exists public.banner_products (
+  banner_id uuid not null references public.banners(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
+  primary key (banner_id, product_id)
+);
+
+alter table public.banner_products enable row level security;
+
+drop policy if exists "banner_products_public_read" on public.banner_products;
+create policy "banner_products_public_read" on public.banner_products for select using (true);
+
+drop policy if exists "banner_products_auth_write" on public.banner_products;
+create policy "banner_products_auth_write" on public.banner_products
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

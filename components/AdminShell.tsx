@@ -32,6 +32,14 @@ export function AdminShell({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const handleBell = () => {
+    if (onNotificationPress) {
+      onNotificationPress();
+      return;
+    }
+    router.push("/admin/notifications" as any);
+  };
+
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
       <AppMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -45,11 +53,7 @@ export function AdminShell({
           {title}
         </Text>
         <View style={styles.rightActions}>
-          <Pressable
-            onPress={onNotificationPress || (() => {})}
-            style={styles.iconBtn}
-            hitSlop={10}
-          >
+          <Pressable onPress={handleBell} style={styles.iconBtn} hitSlop={10}>
             <BellIcon />
           </Pressable>
           {showBack ? (

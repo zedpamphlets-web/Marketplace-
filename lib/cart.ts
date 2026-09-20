@@ -25,12 +25,13 @@ export async function writeCart(lines: CartLine[]) {
   await AsyncStorage.setItem(KEY, JSON.stringify(lines));
 }
 
-export async function addToCart(item: Omit<CartLine, "qty">) {
+export async function addToCart(item: Omit<CartLine, "qty">, qty = 1) {
   const cart = await readCart();
   const existing = cart.find((l) => l.id === item.id);
+  const add = Math.max(1, qty);
   const next = existing
-    ? cart.map((l) => (l.id === item.id ? { ...l, qty: l.qty + 1 } : l))
-    : [...cart, { ...item, qty: 1 }];
+    ? cart.map((l) => (l.id === item.id ? { ...l, qty: l.qty + add } : l))
+    : [...cart, { ...item, qty: add }];
   await writeCart(next);
   return next;
 }

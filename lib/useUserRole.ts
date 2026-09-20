@@ -9,6 +9,11 @@ export type UserRole =
   | { type: "shop_admin"; userId: string; shopId: string }
   | { type: "rider"; userId: string };
 
+/**
+ * Resolve role from session + optional role tables.
+ * If the user has a valid session but the role-table queries fail
+ * (e.g. offline), treat them as a signed-in customer — never force guest.
+ */
 async function resolveRole(): Promise<UserRole> {
   const { data } = await supabase.auth.getSession();
   const user = data.session?.user;
@@ -16,16 +21,30 @@ async function resolveRole(): Promise<UserRole> {
 
   const userId = user.id;
 
-  const [{ data: admin }, { data: shopAdmin }, { data: rider }] = await Promise.all([
-    supabase.from("platform_admins").select("user_id").eq("user_id", userId).maybeSingle(),
-    supabase.from("shop_admins").select("shop_id").eq("user_id", userId).maybeSingle(),
-    supabase.from("riders").select("user_id").eq("user_id", userId).maybeSingle(),
-  ]);
+  try {
+    const [{ data: admin, error: adminErr }, { data: shopAdmin, error: shopErr }, { data: rider, error: riderErr }] =
+      await Promise.all([
+        supabase.from("platform_admins").select("user_id").eq("user_id", userId).maybeSingle(),
+        supabase.from("shop_admins").select("shop_id").eq("user_id", userId).maybeSingle(),
+        supabase.from("riders").select("user_id").eq("user_id", userId).maybeSingle(),
+      ]);
 
-  if (admin) return { type: "super_admin", userId };
-  if (shopAdmin?.shop_id) return { type: "shop_admin", userId, shopId: shopAdmin.shop_id };
-  if (rider) return { type: "rider", userId };
-  return { type: "customer", userId };
+    const networkFail =
+      (adminErr && /network|fetch|failed|offline/i.test(adminErr.message || "")) ||
+      (shopErr && /network|fetch|failed|offline/i.test(shopErr.message || "")) ||
+      (riderErr && /network|fetch|failed|offline/i.test(riderErr.message || ""));
+
+    if (networkFail) {
+      return { type: "customer", userId };
+    }
+
+    if (admin) return { type: "super_admin", userId };
+    if (shopAdmin?.shop_id) return { type: "shop_admin", userId, shopId: shopAdmin.shop_id };
+    if (rider) return { type: "rider", userId };
+    return { type: "customer", userId };
+  } catch {
+    return { type: "customer", userId };
+  }
 }
 
 /** Unchanged — existing screens read `role.type` / `role.shopId` from this. */
@@ -77,7 +96,7 @@ export function useRequireRole(allowed: UserRole["type"][], redirectTo = "/(tabs
 
   useEffect(() => {
     if (loaded && !allowed.includes(role.type)) {
-      router.replace(redirectTo);
+      router.replace(redirectTo as any);
     }
   }, [loaded, role.type]);
 

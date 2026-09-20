@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import Svg, { Circle, Line } from "react-native-svg";
+import Svg, { Circle, Line, Path } from "react-native-svg";
 import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
 import { ShopCard, type ShopCardData } from "@/components/ShopCard";
 import { ProductCard, type ProductCardData } from "@/components/ProductCard";
@@ -25,8 +25,12 @@ import { supabase } from "@/lib/supabase";
 import { addToCart } from "@/lib/cart";
 import { useUserRole } from "@/lib/useUserRole";
 import { Image } from "expo-image";
-import { readHomeProductsCache, saveHomeProductsCache, readHomeShellCache, saveHomeShellCache } from "@/lib/homeCache";
-import { emojiForCategory } from "@/lib/categoryIcons";
+import {
+  readHomeProductsCache,
+  saveHomeProductsCache,
+  readHomeShellCache,
+  saveHomeShellCache,
+} from "@/lib/homeCache";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const BANNER_GAP = spacing.md;
@@ -74,7 +78,9 @@ export default function HomeScreen() {
   const [search, setSearch] = useState("");
   const [shops, setShops] = useState<ShopCardData[]>([]);
   const [products, setProducts] = useState<ProductCardData[]>([]);
-  const [categories, setCategories] = useState<{ id: string; name: string; icon?: string | null; icon_url?: string | null }[]>([]);
+  const [categories, setCategories] = useState<
+    { id: string; name: string; icon?: string | null; icon_url?: string | null }[]
+  >([]);
   const [banners, setBanners] = useState<
     { id: string; title: string | null; subtitle: string | null; image_url: string | null }[]
   >([]);
@@ -235,14 +241,53 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.screen} edges={["top"]}>
       <AppMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
+      {/* Top row: menu | search + camera | bell | cart */}
       <View style={styles.topBar}>
-        <Pressable onPress={() => setMenuOpen(true)} hitSlop={10} style={styles.menuBtn}>
+        <Pressable onPress={() => setMenuOpen(true)} hitSlop={10} style={styles.iconBtn}>
           <View style={styles.menuLine} />
           <View style={[styles.menuLine, { width: 14 }]} />
           <View style={styles.menuLine} />
         </Pressable>
-        <Text style={styles.topTitle}>Marketplace</Text>
-        <View style={{ width: 36 }} />
+
+        <View style={styles.searchBox}>
+          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={colors.textFaint} strokeWidth={2}>
+            <Circle cx="11" cy="11" r="7" />
+            <Line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </Svg>
+          <TextInput
+            placeholder="Search products"
+            placeholderTextColor={colors.textFaint}
+            value={search}
+            onChangeText={setSearch}
+            style={styles.searchInput}
+            returnKeyType="search"
+          />
+          <Pressable hitSlop={8} style={styles.cameraBtn}>
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth={1.8}>
+              <Path d="M4 8h3l2-2h6l2 2h3v11H4V8z" strokeLinecap="round" strokeLinejoin="round" />
+              <Circle cx="12" cy="13" r="3.5" />
+            </Svg>
+          </Pressable>
+        </View>
+
+        <Pressable
+          onPress={() => router.push("/(tabs)/orders")}
+          hitSlop={10}
+          style={styles.iconBtn}
+        >
+          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.text} strokeWidth={2}>
+            <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" />
+            <Path d="M13.73 21a2 2 0 0 1-3.46 0" strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        </Pressable>
+
+        <Pressable onPress={() => router.push("/(tabs)/cart")} hitSlop={10} style={styles.iconBtn}>
+          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.text} strokeWidth={2}>
+            <Circle cx="9" cy="20" r="1.4" />
+            <Circle cx="18" cy="20" r="1.4" />
+            <Path d="M2 3h2l2.4 12.6a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.6L21 7H6" strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        </Pressable>
       </View>
 
       <ScrollView
@@ -275,9 +320,18 @@ export default function HomeScreen() {
               contentContainerStyle={styles.bannerScroll}
             >
               {banners.map((b) => (
-                <View key={b.id} style={[styles.bannerSlide, { width: BANNER_WIDTH }]}>
+                <Pressable
+                  key={b.id}
+                  style={[styles.bannerSlide, { width: BANNER_WIDTH }]}
+                  onPress={() => router.push(`/promotions/${b.id}` as any)}
+                >
                   {b.image_url ? (
-                    <Image source={{ uri: b.image_url }} style={styles.bannerImage} contentFit="cover" transition={200} />
+                    <Image
+                      source={{ uri: b.image_url }}
+                      style={styles.bannerImage}
+                      contentFit="cover"
+                      transition={200}
+                    />
                   ) : (
                     <View style={styles.bannerTextOnly}>
                       <Text style={styles.bannerTitle} numberOfLines={1}>
@@ -290,7 +344,7 @@ export default function HomeScreen() {
                       ) : null}
                     </View>
                   )}
-                </View>
+                </Pressable>
               ))}
             </ScrollView>
             {banners.length > 1 ? (
@@ -303,45 +357,15 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        <View style={styles.searchWrap}>
-          <View style={styles.searchRow}>
-            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={colors.textFaint} strokeWidth={2}>
-              <Circle cx="11" cy="11" r="7" />
-              <Line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </Svg>
-            <TextInput
-              placeholder="Search"
-              placeholderTextColor={colors.textFaint}
-              value={search}
-              onChangeText={setSearch}
-              style={styles.searchInput}
-              returnKeyType="search"
-            />
-          </View>
-        </View>
-
-        {categories.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
-            {categories.map((c) => (
-              <Pressable
-                key={c.id}
-                style={({ pressed }) => [styles.catChip, pressed && styles.catChipPressed]}
-                onPress={() => router.push(`/category/${encodeURIComponent(c.name)}`)}
-              >
-                {c.icon_url ? (
-                  <Image source={{ uri: c.icon_url }} style={{ width: 18, height: 18, borderRadius: 4, marginRight: 6 }} contentFit="cover" />
-                ) : (
-                  <Text style={{ marginRight: 4 }}>{emojiForCategory(c.icon, c.icon_url)}</Text>
-                )}
-                <Text style={styles.catChipText}>{c.name}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        ) : null}
+        {/* Category pills removed — use Categories tab */}
 
         {shops.length > 0 ? (
           <View style={styles.block}>
-            <SectionHeader title="Shops" actionLabel="See all" onPressAction={() => router.push("/(tabs)/categories")} />
+            <SectionHeader
+              title="Shops"
+              actionLabel="See all"
+              onPressAction={() => router.push("/(tabs)/categories")}
+            />
             <FlatList
               data={shops}
               horizontal
@@ -358,38 +382,28 @@ export default function HomeScreen() {
           {initialLoading ? (
             <ProductSkeletonGrid />
           ) : filtered.length === 0 ? (
-            <Text style={styles.emptyProducts}>No products yet</Text>
+            <Text style={styles.empty}>No products found</Text>
           ) : (
-            <>
-              <View style={styles.grid}>
-                {filtered.map((p) => (
-                  <View key={p.id} style={styles.gridItem}>
-                    <ProductCard product={p} variant="home" onAddToCart={onAdd} />
-                  </View>
-                ))}
-              </View>
-              {loadingMore ? (
-                <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
-              ) : null}
-              {!hasMore && !search.trim() && products.length > 0 ? (
-                <Text style={styles.endHint}>You’re all caught up</Text>
-              ) : null}
-            </>
+            <View style={styles.grid}>
+              {filtered.map((p) => (
+                <View key={p.id} style={styles.gridItem}>
+                  <ProductCard product={p} variant="home" onAddToCart={onAdd} />
+                </View>
+              ))}
+            </View>
           )}
+          {loadingMore ? <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} /> : null}
         </View>
-      </ScrollView>
 
-      {role.type === "guest" ? (
-        <View style={styles.guestBar}>
-          <Text style={styles.guestText}>Sign in to checkout</Text>
-          <Pressable
-            style={({ pressed }) => [styles.signBtn, pressed && { opacity: 0.9 }]}
-            onPress={() => router.push("/auth/login")}
-          >
-            <Text style={styles.signBtnText}>Sign in</Text>
-          </Pressable>
-        </View>
-      ) : null}
+        {role.type === "guest" ? (
+          <View style={styles.guestBox}>
+            <Text style={styles.guestText}>Sign in for a better shopping experience</Text>
+            <Pressable style={styles.signBtn} onPress={() => router.push("/auth/sign-in" as any)}>
+              <Text style={styles.signBtnText}>Sign in</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </ScrollView>
 
       {toast ? (
         <View style={styles.toast}>
@@ -405,134 +419,103 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    gap: 8,
   },
-  menuBtn: { width: 36, height: 36, justifyContent: "center", gap: 5 },
-  menuLine: { width: 18, height: 2, backgroundColor: colors.text, borderRadius: 1 },
-  topTitle: {
-    fontSize: typography.h3,
-    fontFamily: typography.displaySemibold,
-    color: colors.text,
-    letterSpacing: -0.3,
-  },
-  scrollContent: { paddingBottom: spacing.xxxl },
-  bannerBlock: { marginTop: spacing.md },
-  bannerScroll: { paddingHorizontal: spacing.lg, gap: BANNER_GAP },
-  bannerSlide: { borderRadius: radius.lg, overflow: "hidden", height: 140 },
-  bannerImage: { width: "100%", height: 140, backgroundColor: colors.primary },
-  bannerTextOnly: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
+  iconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
     justifyContent: "center",
   },
-  bannerTitle: {
-    color: "#fff",
-    fontSize: typography.h2,
-    fontFamily: typography.displayFont,
+  menuLine: {
+    width: 18,
+    height: 2,
+    backgroundColor: colors.text,
+    borderRadius: 1,
+    marginVertical: 2,
   },
-  bannerSub: {
-    color: "rgba(255,255,255,0.9)",
-    marginTop: 6,
-    fontSize: typography.small,
-    fontFamily: typography.bodyMedium,
-  },
-  dots: { flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 8 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
-  dotOn: { backgroundColor: colors.primary, width: 16 },
-  searchWrap: { paddingHorizontal: spacing.lg, marginTop: spacing.lg },
-  searchRow: {
+  searchBox: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
+    backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.md + 2,
-    paddingVertical: 11,
-    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    height: 40,
   },
   searchInput: {
     flex: 1,
-    fontSize: typography.body,
+    fontSize: typography.small,
     color: colors.text,
-    fontFamily: typography.bodyFont,
     padding: 0,
   },
-  catRow: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm },
-  catChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: spacing.sm,
+  cameraBtn: { padding: 2 },
+  scrollContent: { paddingBottom: 40 },
+  bannerBlock: { marginTop: spacing.md },
+  bannerScroll: { paddingHorizontal: spacing.lg },
+  bannerSlide: {
+    height: 140,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    marginRight: BANNER_GAP,
+    backgroundColor: colors.primaryMuted,
   },
-  catChipPressed: { backgroundColor: colors.primaryMuted, borderColor: colors.primary },
-  catChipText: {
-    fontSize: typography.small,
-    color: colors.textSecondary,
-    fontFamily: typography.bodyMedium,
+  bannerImage: { width: "100%", height: "100%" },
+  bannerTextOnly: {
+    flex: 1,
+    padding: spacing.lg,
+    justifyContent: "center",
+    backgroundColor: colors.primary,
   },
-  block: { paddingHorizontal: spacing.lg, marginBottom: spacing.xl },
+  bannerTitle: { color: "#fff", fontFamily: typography.displaySemibold, fontSize: typography.h3 },
+  bannerSub: { color: "rgba(255,255,255,0.9)", marginTop: 4, fontSize: typography.small },
+  dots: { flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 8 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
+  dotOn: { backgroundColor: colors.primary, width: 16 },
+  block: { marginTop: spacing.lg, paddingHorizontal: spacing.lg },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  gridItem: { width: "48.5%" },
+  gridItem: { width: "48%" },
   skelCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     overflow: "hidden",
     marginBottom: spacing.md,
+    ...shadow.card,
+  },
+  empty: { textAlign: "center", color: colors.textMuted, marginVertical: 24 },
+  guestBox: {
+    margin: spacing.lg,
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  emptyProducts: {
-    textAlign: "center",
-    color: colors.textMuted,
-    fontFamily: typography.bodyMedium,
-    marginVertical: spacing.xxl,
-  },
-  endHint: {
-    textAlign: "center",
-    color: colors.textFaint,
-    fontSize: typography.tiny,
-    marginTop: 8,
-  },
-  guestBar: {
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.accentMuted,
-    borderTopWidth: 1,
-    borderTopColor: colors.primaryMuted,
   },
-  guestText: { color: colors.text, fontFamily: typography.bodyMedium, fontSize: typography.small },
+  guestText: { color: colors.text, fontFamily: typography.bodyMedium, fontSize: typography.small, marginBottom: 12 },
   signBtn: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     borderRadius: radius.pill,
   },
   signBtnText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.small },
   toast: {
     position: "absolute",
-    bottom: 88,
+    bottom: 32,
     alignSelf: "center",
     backgroundColor: colors.text,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: radius.pill,
-    ...shadow.raised,
   },
   toastText: { color: "#fff", fontSize: typography.small, fontFamily: typography.bodySemibold },
 });

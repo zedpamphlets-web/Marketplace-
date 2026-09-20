@@ -1,131 +1,340 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { Image } from "expo-image";
-import { colors, spacing, radius, typography } from "@/lib/theme";
+import Svg, { Path } from "react-native-svg";
+import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
+import { ProductCard, type ProductCardData } from "@/components/ProductCard";
 import { ProductBadgeRow } from "@/components/ProductBadges";
-import { PrimaryButton } from "@/components/Shared";
 import { supabase } from "@/lib/supabase";
 import { addToCart } from "@/lib/cart";
 
+type Product = {
+  id: string;
+  shop_id: string;
+  name: string;
+  price: number;
+  image_url: string | null;
+  rating: number | null;
+  category: string | null;
+  badges: string[] | null;
+  sold_count: number | null;
+  description?: string | null;
+  shops?: { id: string; name: string } | null;
+};
+
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [product, setProduct] = useState<any>(null);
-  const [shopName, setShopName] = useState("");
+  const [product, setProduct] = useState<Product | null>(null);
+  const [similar, setSimilar] = useState<ProductCardData[]>([]);
   const [qty, setQty] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [toast, setToast] = useState("");
 
-  useEffect(() => {
-    (async () => {
+  const load = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
       const { data } = await supabase
         .from("products")
-        .select("id, shop_id, name, price, image_url, rating, category, badges, sold_count")
+        .select("id, shop_id, name, price, image_url, rating, category, badges, sold_count, shops(id, name)")
         .eq("id", id)
         .maybeSingle();
-      setProduct(data);
-      if (data?.shop_id) {
-        const { data: shop } = await supabase.from("shops").select("name").eq("id", data.shop_id).maybeSingle();
-        setShopName(shop?.name ?? "");
+      setProduct((data as Product) ?? null);
+
+      if (data?.category) {
+        const { data: more } = await supabase
+          .from("products")
+          .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, shops(name)")
+          .eq("category", data.category)
+          .neq("id", id)
+          .limit(8);
+        setSimilar(
+          (more ?? []).map((p: any) => ({
+            id: p.id,
+            shop_id: p.shop_id,
+            name: p.name,
+            price: Number(p.price),
+            image_url: p.image_url,
+            rating: p.rating,
+            is_deal: p.is_deal,
+            category: p.category,
+            badges: p.badges,
+            sold_count: p.sold_count,
+            shop_name: p.shops?.name ?? null,
+          }))
+        );
+      } else {
+        setSimilar([]);
       }
+    } catch (e) {
+      console.warn(e);
+      setProduct(null);
+    } finally {
       setLoading(false);
-    })();
+    }
   }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const onAdd = async () => {
+    if (!product) return;
+    setAdding(true);
+    try {
+      await addToCart(
+        {
+          id: product.id,
+          name: product.name,
+          shopName: product.shops?.name || "",
+          price: Number(product.price),
+          image_url: product.image_url,
+          shop_id: product.shop_id,
+        },
+        qty
+      );
+      setToast(`Added ${qty} to cart`);
+      setTimeout(() => setToast(""), 1600);
+    } finally {
+      setAdding(false);
+    }
+  };
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.screen}>
-        <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
+      <SafeAreaView style={styles.screen} edges={["top"]}>
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 80 }} />
       </SafeAreaView>
     );
   }
 
   if (!product) {
     return (
-      <SafeAreaView style={styles.screen}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹</Text>
-        </Pressable>
-        <Text style={{ padding: 16 }}>Product not found.</Text>
+      <SafeAreaView style={styles.screen} edges={["top"]}>
+        <View style={styles.notFound}>
+          <Text style={styles.notFoundText}>Product not found</Text>
+          <Pressable onPress={() => router.back()}>
+            <Text style={styles.link}>Go back</Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
 
+  const shopName = product.shops?.name ?? "Shop";
+  const shopId = product.shops?.id ?? product.shop_id;
+
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹</Text>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
+          <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={colors.text} strokeWidth={2}>
+            <Path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        </Pressable>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          Product
+        </Text>
+        <Pressable onPress={() => router.push("/(tabs)/cart")} style={styles.backBtn} hitSlop={12}>
+          <Text style={styles.cartLink}>Cart</Text>
         </Pressable>
       </View>
-      <ScrollView contentContainerStyle={styles.content}>
-        {product.image_url ? (
-          <Image source={{ uri: product.image_url }} style={styles.image} contentFit="cover" />
-        ) : (
-          <View style={styles.imagePlaceholder} />
-        )}
-        {shopName ? <Text style={styles.shopTag}>{shopName}</Text> : null}
-        <View style={{ marginBottom: 8 }}>
-          <ProductBadgeRow ids={product.badges} compact={false} />
-        </View>
-        <Text style={styles.name}>{product.name}</Text>
-        <Text style={styles.price}>
-          K {Number(product.price).toLocaleString("en-ZM", { maximumFractionDigits: 0 })}
-        </Text>
-        {product.category ? <Text style={styles.rating}>{product.category}</Text> : null}
 
-        <View style={styles.stepperRow}>
-          <Text style={styles.qtyLabel}>Quantity</Text>
-          <View style={styles.stepper}>
-            <Pressable style={styles.stepBtn} onPress={() => setQty((q) => Math.max(1, q - 1))}>
-              <Text style={styles.stepBtnText}>−</Text>
-            </Pressable>
-            <Text style={styles.qtyText}>{qty}</Text>
-            <Pressable style={styles.stepBtn} onPress={() => setQty((q) => q + 1)}>
-              <Text style={styles.stepBtnText}>+</Text>
-            </Pressable>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        <View style={styles.imageWrap}>
+          {product.image_url ? (
+            <Image source={{ uri: product.image_url }} style={styles.image} contentFit="cover" />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Text style={styles.placeholderText}>No image</Text>
+            </View>
+          )}
+          <View style={styles.badgeOverlay}>
+            <ProductBadgeRow ids={product.badges} />
           </View>
         </View>
+
+        <View style={styles.body}>
+          <Text style={styles.name}>{product.name}</Text>
+          <Text style={styles.price}>
+            K{Number(product.price).toLocaleString("en-ZM", { maximumFractionDigits: 0 })}
+          </Text>
+
+          <Pressable onPress={() => router.push(`/shop/${shopId}`)} style={styles.shopRow}>
+            <Text style={styles.shopLabel}>Sold by </Text>
+            <Text style={styles.shopName}>{shopName}</Text>
+            <Text style={styles.shopChevron}> ›</Text>
+          </Pressable>
+
+          {product.rating != null ? (
+            <Text style={styles.rating}>★ {Number(product.rating).toFixed(1)}</Text>
+          ) : null}
+
+          <View style={styles.qtyRow}>
+            <Text style={styles.qtyLabel}>Quantity</Text>
+            <View style={styles.qtyControls}>
+              <Pressable
+                onPress={() => setQty((q) => Math.max(1, q - 1))}
+                style={styles.qtyBtn}
+                hitSlop={8}
+              >
+                <Text style={styles.qtyBtnText}>−</Text>
+              </Pressable>
+              <Text style={styles.qtyValue}>{qty}</Text>
+              <Pressable onPress={() => setQty((q) => q + 1)} style={styles.qtyBtn} hitSlop={8}>
+                <Text style={styles.qtyBtnText}>+</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <Pressable
+            onPress={onAdd}
+            disabled={adding}
+            style={({ pressed }) => [styles.addBtn, pressed && styles.addBtnPressed]}
+          >
+            <Text style={styles.addBtnText}>{adding ? "Adding…" : "Add to cart"}</Text>
+          </Pressable>
+        </View>
+
+        {similar.length > 0 ? (
+          <View style={styles.similarBlock}>
+            <Text style={styles.similarTitle}>Similar products</Text>
+            <View style={styles.grid}>
+              {similar.map((p) => (
+                <View key={p.id} style={styles.gridItem}>
+                  <ProductCard
+                    product={p}
+                    variant="home"
+                    onAddToCart={async (prod) => {
+                      await addToCart({
+                        id: prod.id,
+                        name: prod.name,
+                        shopName: prod.shop_name || "",
+                        price: prod.price,
+                        image_url: prod.image_url,
+                        shop_id: prod.shop_id,
+                      });
+                      setToast("Added to cart");
+                      setTimeout(() => setToast(""), 1400);
+                    }}
+                  />
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
-      <View style={styles.footer}>
-        <PrimaryButton
-          label={`Add to Cart · K ${(Number(product.price) * qty).toLocaleString("en-ZM")}`}
-          onPress={async () => {
-            for (let i = 0; i < qty; i += 1) {
-              await addToCart({
-                id: product.id,
-                name: product.name,
-                shopName,
-                price: Number(product.price),
-                image_url: product.image_url,
-                shop_id: product.shop_id,
-              });
-            }
-            router.push("/(tabs)/cart");
-          }}
-        />
-      </View>
+
+      {toast ? (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#fff" },
-  topBar: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md },
-  backBtn: { width: 34, height: 34, borderRadius: 12, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  backText: { fontSize: 20, color: colors.text },
-  content: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
-  image: { width: "100%", height: 240, borderRadius: 12, backgroundColor: "#F3F4F6" },
-  imagePlaceholder: { width: "100%", height: 240, borderRadius: 12, backgroundColor: "#F3F4F6" },
-  shopTag: { marginTop: 12, color: colors.textMuted, fontSize: 13 },
-  name: { fontSize: 22, fontFamily: typography.displaySemibold, color: colors.text, marginTop: 6 },
-  price: { fontSize: 20, fontFamily: typography.bodyBold, marginTop: 8, color: colors.text },
-  rating: { color: colors.textMuted, marginTop: 6 },
-  stepperRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 20 },
-  qtyLabel: { fontFamily: typography.bodySemibold },
-  stepper: { flexDirection: "row", alignItems: "center", gap: 12 },
-  stepBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
-  stepBtnText: { fontSize: 18 },
-  qtyText: { minWidth: 20, textAlign: "center", fontFamily: typography.bodyBold },
-  footer: { padding: 16, borderTopWidth: 1, borderTopColor: colors.border },
+  screen: { flex: 1, backgroundColor: colors.bg },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  backBtn: { minWidth: 40, height: 36, alignItems: "center", justifyContent: "center" },
+  headerTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: typography.displaySemibold,
+    fontSize: typography.h3,
+    color: colors.text,
+  },
+  cartLink: { color: colors.primary, fontFamily: typography.bodySemibold, fontSize: typography.small },
+  imageWrap: { width: "100%", aspectRatio: 1, backgroundColor: "#F1F5F9", position: "relative" },
+  image: { width: "100%", height: "100%" },
+  imagePlaceholder: { flex: 1, alignItems: "center", justifyContent: "center" },
+  placeholderText: { color: colors.textFaint },
+  badgeOverlay: { position: "absolute", top: 12, left: 12, right: 12 },
+  body: { padding: spacing.lg, backgroundColor: colors.surface },
+  name: {
+    fontFamily: typography.displaySemibold,
+    fontSize: typography.h2,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  price: {
+    fontFamily: typography.bodyBold,
+    fontSize: 22,
+    color: "#EA580C",
+    marginBottom: 12,
+  },
+  shopRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
+  shopLabel: { color: colors.textMuted, fontSize: typography.small },
+  shopName: { color: colors.primary, fontFamily: typography.bodySemibold, fontSize: typography.small },
+  shopChevron: { color: colors.primary, fontSize: typography.small },
+  rating: { color: colors.textSecondary, fontSize: typography.small, marginBottom: 16 },
+  qtyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  qtyLabel: { fontFamily: typography.bodySemibold, color: colors.text, fontSize: typography.body },
+  qtyControls: { flexDirection: "row", alignItems: "center", gap: 12 },
+  qtyBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bg,
+  },
+  qtyBtnText: { fontSize: 20, color: colors.text, lineHeight: 24 },
+  qtyValue: { fontFamily: typography.bodyBold, fontSize: typography.h3, color: colors.text, minWidth: 28, textAlign: "center" },
+  addBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  addBtnPressed: { backgroundColor: colors.primaryDark },
+  addBtnText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.body },
+  similarBlock: { padding: spacing.lg, paddingTop: spacing.xl },
+  similarTitle: {
+    fontFamily: typography.displaySemibold,
+    fontSize: typography.h3,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  gridItem: { width: "48%" },
+  notFound: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
+  notFoundText: { fontSize: typography.h3, fontFamily: typography.bodySemibold, color: colors.text, marginBottom: spacing.md },
+  link: { color: colors.primary, fontFamily: typography.bodySemibold },
+  toast: {
+    position: "absolute",
+    bottom: 32,
+    alignSelf: "center",
+    backgroundColor: colors.text,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+  },
+  toastText: { color: "#fff", fontFamily: typography.bodySemibold, fontSize: typography.small },
 });

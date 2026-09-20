@@ -48,16 +48,19 @@ export default function SuperAdminDashboard() {
 
   const load = useCallback(async () => {
     try {
-      const [{ count: shops }, { count: products }, { data: orders }] = await Promise.all([
-        supabase.from("shops").select("id", { count: "exact", head: true }),
-        supabase.from("products").select("id", { count: "exact", head: true }),
-        supabase.from("orders").select("total"),
-      ]);
-      const revenue = (orders ?? []).reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+      const [{ count: shops }, { count: products }, { data: paidOrders }, { count: orderCount }] =
+        await Promise.all([
+          supabase.from("shops").select("id", { count: "exact", head: true }),
+          supabase.from("products").select("id", { count: "exact", head: true }),
+          // Revenue only from successfully paid orders
+          supabase.from("orders").select("total").eq("payment_status", "paid"),
+          supabase.from("orders").select("id", { count: "exact", head: true }),
+        ]);
+      const revenue = (paidOrders ?? []).reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
       setStats({
         shops: shops ?? 0,
         products: products ?? 0,
-        orders: orders?.length ?? 0,
+        orders: orderCount ?? 0,
         revenue,
       });
     } catch (e) {
@@ -83,6 +86,7 @@ export default function SuperAdminDashboard() {
               setRefreshing(true);
               load();
             }}
+            tintColor={colors.primary}
           />
         }
       >
@@ -136,6 +140,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.md,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   statLabel: {
     fontSize: 10,
@@ -159,6 +165,8 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 12,
     marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   linkText: {
     fontFamily: typography.bodySemibold,

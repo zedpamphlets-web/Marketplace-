@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  iconCellOn: { borderColor: colors.primary, backgroundColor: "#1E3A5F" },
+  iconCellOn: { borderColor: colors.primary, backgroundColor: colors.primaryMuted },
   iconEmoji: { fontSize: 22 },
   iconPreview: {
     width: 40,

@@ -1,74 +1,94 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Pressable,
   TextInput,
+  Pressable,
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import Svg, { Circle, Line } from "react-native-svg";
 import { colors, spacing, radius, typography } from "@/lib/theme";
 import { ProductCard, type ProductCardData } from "@/components/ProductCard";
 import { supabase } from "@/lib/supabase";
 import { addToCart } from "@/lib/cart";
 import { emojiForCategory } from "@/lib/categoryIcons";
-import { Image } from "expo-image";
+
+type Cat = { id: string; name: string; icon?: string | null; icon_url?: string | null };
 
 export default function CategoriesScreen() {
-  const [categories, setCategories] = useState<{ id: string; name: string; icon?: string | null; icon_url?: string | null }[]>([]);
-  const [active, setActive] = useState("");
-  const [search, setSearch] = useState("");
+  const [categories, setCategories] = useState<Cat[]>([]);
   const [products, setProducts] = useState<ProductCardData[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeName, setActiveName] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [toast, setToast] = useState("");
 
-  const load = useCallback(async () => {
+  const loadCategories = useCallback(async () => {
     setLoading(true);
-    const [{ data: catRows }, { data: productRows }] = await Promise.all([
-      supabase.from("categories").select("id, name, icon, icon_url").order("sort_order"),
-      supabase
-        .from("products")
-        .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count")
-        .order("created_at", { ascending: false })
-        .limit(40),
-    ]);
-    const cats = (catRows as any[]) ?? [];
-    setCategories(cats);
-    if (!active && cats.length) setActive(cats[0].name);
-    setProducts(
-      (productRows ?? []).map((p: any) => ({
-        id: p.id,
-        shop_id: p.shop_id,
-        name: p.name,
-        price: Number(p.price),
-        image_url: p.image_url,
-        rating: p.rating,
-        is_deal: p.is_deal,
-        category: p.category,
-        badges: p.badges ?? [],
-        sold_count: p.sold_count ?? 0,
-      }))
-    );
-    setLoading(false);
-  }, [active]);
+    try {
+      const { data } = await supabase.from("categories").select("id, name, icon, icon_url").order("sort_order");
+      setCategories((data as Cat[]) ?? []);
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadCategories();
+  }, [loadCategories]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return products.filter((p) => {
-      const inCat = !active || !p.category || p.category === active;
-      const inSearch =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        (p.category || "").toLowerCase().includes(q);
-      return q ? inSearch : inCat;
-    });
-  }, [products, active, search]);
+  const selectCategory = async (cat: Cat | null) => {
+    if (!cat) {
+      setActiveId(null);
+      setActiveName(null);
+      setProducts([]);
+      return;
+    }
+    setActiveId(cat.id);
+    setActiveName(cat.name);
+    setLoadingProducts(true);
+    try {
+      const { data } = await supabase
+        .from("products")
+        .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, shops(name)")
+        .ilike("category", cat.name)
+        .order("created_at", { ascending: false });
+      setProducts(
+        (data ?? []).map((p: any) => ({
+          id: p.id,
+          shop_id: p.shop_id,
+          name: p.name,
+          price: Number(p.price),
+          image_url: p.image_url,
+          rating: p.rating,
+          is_deal: p.is_deal,
+          category: p.category,
+          badges: p.badges,
+          sold_count: p.sold_count,
+          shop_name: p.shops?.name ?? null,
+        }))
+      );
+    } catch (e) {
+      console.warn(e);
+      setProducts([]);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  const filtered = search.trim()
+    ? products.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
+    : products;
+
+  const showBrowse = !activeId;
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
@@ -79,7 +99,7 @@ export default function CategoriesScreen() {
             <Line x1="21" y1="21" x2="16.65" y2="16.65" />
           </Svg>
           <TextInput
-            placeholder="Search products"
+            placeholder={showBrowse ? "Search categories" : "Search products"}
             placeholderTextColor={colors.textFaint}
             value={search}
             onChangeText={setSearch}
@@ -89,64 +109,120 @@ export default function CategoriesScreen() {
       </View>
 
       <View style={styles.trust}>
-        <Text style={styles.trustText}>Free shipping</Text>
+        <Text style={styles.trustText}>Secure checkout</Text>
         <Text style={styles.trustDot}>·</Text>
-        <Text style={styles.trustText}>Return if item damaged</Text>
+        <Text style={styles.trustText}>Fast delivery</Text>
       </View>
 
-      {loading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
-      ) : (
-        <View style={styles.body}>
-          <ScrollView style={styles.side} showsVerticalScrollIndicator={false}>
-            <Text style={styles.featured}>Categories</Text>
-            {categories.length === 0 ? (
-              <Text style={styles.emptySide}>No categories</Text>
-            ) : (
-              categories.map((c) => {
-                const on = active === c.name;
-                return (
-                  <Pressable key={c.id} onPress={() => setActive(c.name)} style={[styles.sideItem, on && styles.sideOn]}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    {c.icon_url ? (
-                      <Image source={{ uri: c.icon_url }} style={{ width: 18, height: 18, borderRadius: 4 }} contentFit="cover" />
-                    ) : (
-                      <Text>{emojiForCategory(c.icon, c.icon_url)}</Text>
-                    )}
-                    <Text style={[styles.sideText, on && styles.sideTextOn]} numberOfLines={2}>{c.name}</Text>
-                  </View>
-                  </Pressable>
-                );
-              })
-            )}
-          </ScrollView>
+      <View style={styles.body}>
+        {/* Sidebar */}
+        <ScrollView style={styles.side} showsVerticalScrollIndicator={false}>
+          <Text style={styles.featured}>CATEGORIES</Text>
+          <Pressable
+            onPress={() => selectCategory(null)}
+            style={[styles.sideItem, !activeId && styles.sideOn]}
+          >
+            <Text style={[styles.sideText, !activeId && styles.sideTextOn]}>All</Text>
+          </Pressable>
+          {categories.length === 0 && !loading ? (
+            <Text style={styles.emptySide}>No categories</Text>
+          ) : (
+            categories.map((c) => (
+              <Pressable
+                key={c.id}
+                onPress={() => selectCategory(c)}
+                style={[styles.sideItem, activeId === c.id && styles.sideOn]}
+              >
+                <Text style={[styles.sideText, activeId === c.id && styles.sideTextOn]} numberOfLines={2}>
+                  {c.name}
+                </Text>
+              </Pressable>
+            ))
+          )}
+        </ScrollView>
 
-          <ScrollView style={styles.main} contentContainerStyle={styles.mainContent}>
-            <Text style={styles.section}>{active || "All"}</Text>
-            <View style={styles.grid}>
-              {filtered.map((p) => (
-                <View key={p.id} style={styles.gridItem}>
-                  <ProductCard
-                    product={p}
-                    variant="home"
-                    onAddToCart={async () => {
-                      await addToCart({
-                        id: p.id,
-                        name: p.name,
-                        shopName: "",
-                        price: p.price,
-                        image_url: p.image_url,
-                        shop_id: p.shop_id,
-                      });
-                    }}
-                  />
-                </View>
-              ))}
-            </View>
-            {filtered.length === 0 ? <Text style={styles.empty}>No products in this category</Text> : null}
-          </ScrollView>
+        {/* Main */}
+        <View style={styles.main}>
+          {loading ? (
+            <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+          ) : showBrowse ? (
+            <ScrollView contentContainerStyle={styles.mainContent} showsVerticalScrollIndicator={false}>
+              <Text style={styles.section}>Shop by category</Text>
+              <View style={styles.circleGrid}>
+                {categories
+                  .filter((c) =>
+                    search.trim()
+                      ? c.name.toLowerCase().includes(search.trim().toLowerCase())
+                      : true
+                  )
+                  .map((c) => (
+                    <Pressable key={c.id} style={styles.circleItem} onPress={() => selectCategory(c)}>
+                      <View style={styles.circle}>
+                        {c.icon_url ? (
+                          <Image source={{ uri: c.icon_url }} style={styles.circleImg} contentFit="cover" />
+                        ) : (
+                          <Text style={styles.circleEmoji}>{emojiForCategory(c.icon, c.icon_url)}</Text>
+                        )}
+                      </View>
+                      <Text style={styles.circleName} numberOfLines={2}>
+                        {c.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+              </View>
+              {categories.length === 0 ? (
+                <Text style={styles.empty}>No categories yet</Text>
+              ) : null}
+            </ScrollView>
+          ) : (
+            <ScrollView contentContainerStyle={styles.mainContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.productHeader}>
+                <Text style={styles.section}>{activeName}</Text>
+                <Pressable onPress={() => selectCategory(null)}>
+                  <Text style={styles.backAll}>← All</Text>
+                </Pressable>
+              </View>
+              {loadingProducts ? (
+                <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
+              ) : (
+                <>
+                  <View style={styles.grid}>
+                    {filtered.map((p) => (
+                      <View key={p.id} style={styles.gridItem}>
+                        <ProductCard
+                          product={p}
+                          variant="home"
+                          onAddToCart={async (prod) => {
+                            await addToCart({
+                              id: prod.id,
+                              name: prod.name,
+                              shopName: prod.shop_name || "",
+                              price: prod.price,
+                              image_url: prod.image_url,
+                              shop_id: prod.shop_id,
+                            });
+                            setToast("Added to cart");
+                            setTimeout(() => setToast(""), 1400);
+                          }}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                  {filtered.length === 0 ? (
+                    <Text style={styles.empty}>No products in this category</Text>
+                  ) : null}
+                </>
+              )}
+            </ScrollView>
+          )}
         </View>
-      )}
+      </View>
+
+      {toast ? (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -198,9 +274,57 @@ const styles = StyleSheet.create({
   section: {
     fontFamily: typography.bodyBold,
     color: colors.text,
+    marginBottom: spacing.md,
+    fontSize: typography.body,
+  },
+  productHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: spacing.sm,
+  },
+  backAll: { color: colors.primary, fontFamily: typography.bodySemibold, fontSize: typography.small },
+  circleGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  circleItem: {
+    width: "33.33%",
+    alignItems: "center",
+    marginBottom: spacing.lg,
+    paddingHorizontal: 4,
+  },
+  circle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primaryMuted,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  circleImg: { width: "100%", height: "100%" },
+  circleEmoji: { fontSize: 28 },
+  circleName: {
+    marginTop: 8,
+    textAlign: "center",
+    fontSize: typography.tiny,
+    fontFamily: typography.bodyMedium,
+    color: colors.text,
   },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   gridItem: { width: "48.5%" },
   empty: { textAlign: "center", color: colors.textMuted, marginTop: 24 },
+  toast: {
+    position: "absolute",
+    bottom: 24,
+    alignSelf: "center",
+    backgroundColor: colors.text,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+  },
+  toastText: { color: "#fff", fontFamily: typography.bodySemibold, fontSize: typography.small },
 });

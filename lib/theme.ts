@@ -14,11 +14,12 @@ export const colors = {
   danger: "#DC2626",
   success: "#16A34A",
   warning: "#F59E0B",
-  adminBg: "#0B1220",
-  adminSurface: "#111827",
-  adminCard: "#1F2937",
-  adminText: "#F8FAFC",
-  adminMuted: "#94A3B8",
+  // Light admin theme (was dark navy)
+  adminBg: "#F8FAFC",
+  adminSurface: "#FFFFFF",
+  adminCard: "#FFFFFF",
+  adminText: "#0F172A",
+  adminMuted: "#64748B",
   statusNewBg: "#DBEAFE",
   statusNewText: "#1D4ED8",
   statusPrepBg: "#FEF3C7",
@@ -83,4 +84,3 @@ export const shadow = {
     elevation: 4,
   },
 };
-

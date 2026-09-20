@@ -19,26 +19,48 @@ const LINKS = [
   { label: "Categories", route: "/shop-admin/categories" },
 ];
 
+type ShopInfo = {
+  logo_url: string | null;
+  banner_1: string | null;
+  delivery_fee?: number | null;
+  name?: string | null;
+};
+
 export default function ShopAdminDashboard() {
   const role = useUserRole();
   const shopId = role.type === "shop_admin" ? role.shopId : null;
   const [orders, setOrders] = useState<any[]>([]);
   const [stats, setStats] = useState({ orders: 0, revenue: 0, products: 0 });
+  const [shop, setShop] = useState<ShopInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     if (!shopId) return;
-    const [{ data: orderRows }, { count: productCount }] = await Promise.all([
-      supabase.from("orders").select("id, total, status, payment_status, created_at").eq("shop_id", shopId).order("created_at", { ascending: false }).limit(20),
+    const [{ data: orderRows }, { count: productCount }, { data: shopRow }] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("id, total, status, payment_status, created_at")
+        .eq("shop_id", shopId)
+        .order("created_at", { ascending: false })
+        .limit(20),
       supabase.from("products").select("id", { count: "exact", head: true }).eq("shop_id", shopId),
+      supabase
+        .from("shops")
+        .select("name, logo_url, banner_1, delivery_fee")
+        .eq("id", shopId)
+        .maybeSingle(),
     ]);
     const list = orderRows ?? [];
+    const paidRevenue = list
+      .filter((o) => o.payment_status === "paid")
+      .reduce((s, o) => s + Number(o.total || 0), 0);
     setOrders(list);
     setStats({
       orders: list.length,
-      revenue: list.reduce((s, o) => s + Number(o.total || 0), 0),
+      revenue: paidRevenue,
       products: productCount ?? 0,
     });
+    setShop((shopRow as ShopInfo) ?? null);
     setRefreshing(false);
   }, [shopId]);
 
@@ -46,19 +68,43 @@ export default function ShopAdminDashboard() {
     load();
   }, [load]);
 
+  const missing: string[] = [];
+  if (shop) {
+    if (!shop.logo_url) missing.push("logo");
+    if (!shop.banner_1) missing.push("banner image");
+    if (shop.delivery_fee == null) missing.push("delivery fee");
+  }
+
   return (
     <AdminShell title="Shop Dashboard" showBack={false}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              load();
+            }}
+          />
+        }
       >
+        {missing.length > 0 ? (
+          <Pressable style={styles.setupBanner} onPress={() => router.push("/shop-admin/edit" as any)}>
+            <Text style={styles.setupTitle}>Complete your shop setup</Text>
+            <Text style={styles.setupBody}>
+              Missing: {missing.join(", ")}. Tap to edit shop details.
+            </Text>
+          </Pressable>
+        ) : null}
+
         <View style={styles.statGrid}>
           <View style={[styles.statCard, shadow.card]}>
             <Text style={styles.statLabel}>ORDERS</Text>
             <Text style={styles.statValue}>{stats.orders}</Text>
           </View>
           <View style={[styles.statCard, shadow.card]}>
-            <Text style={styles.statLabel}>REVENUE</Text>
+            <Text style={styles.statLabel}>REVENUE (PAID)</Text>
             <Text style={styles.statValue}>{kwacha(stats.revenue)}</Text>
           </View>
           <View style={[styles.statCard, shadow.card]}>
@@ -70,7 +116,11 @@ export default function ShopAdminDashboard() {
         <Text style={styles.section}>Manage</Text>
         <View style={styles.linkGrid}>
           {LINKS.map((item) => (
-            <Pressable key={item.label} style={[styles.linkCard, shadow.card]} onPress={() => router.push(item.route as any)}>
+            <Pressable
+              key={item.label}
+              style={[styles.linkCard, shadow.card]}
+              onPress={() => router.push(item.route as any)}
+            >
               <Text style={styles.linkText}>{item.label}</Text>
             </Pressable>
           ))}
@@ -100,16 +150,63 @@ export default function ShopAdminDashboard() {
 
 const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: 40 },
+  setupBanner: {
+    backgroundColor: "#FEF3C7",
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  setupTitle: {
+    fontFamily: typography.bodyBold,
+    color: "#92400E",
+    marginBottom: 4,
+  },
+  setupBody: {
+    color: "#B45309",
+    fontSize: typography.small,
+  },
   statGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  statCard: { width: "48%", backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md },
+  statCard: {
+    width: "48%",
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   statLabel: { fontSize: 10, color: colors.textFaint, fontFamily: typography.bodySemibold, marginBottom: 8 },
   statValue: { fontSize: 20, fontFamily: typography.displayFont, color: colors.text },
-  section: { fontFamily: typography.bodyBold, color: colors.textMuted, marginBottom: spacing.sm, marginTop: spacing.sm },
+  section: {
+    fontFamily: typography.bodyBold,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
+  },
   linkGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  linkCard: { width: "48%", backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
+  linkCard: {
+    width: "48%",
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   linkText: { fontFamily: typography.bodySemibold, color: colors.text },
   empty: { color: colors.textMuted, marginBottom: spacing.md },
-  orderRow: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface, padding: spacing.md, borderRadius: radius.md, marginBottom: spacing.sm },
+  orderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   orderId: { fontFamily: typography.bodyBold, color: colors.text },
   orderSub: { color: colors.textMuted, fontSize: typography.tiny },
 });

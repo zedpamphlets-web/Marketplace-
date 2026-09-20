@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   btnText: { color: "#fff", fontFamily: typography.bodySemibold, fontSize: typography.small },
   btnGhost: {
     borderWidth: 1,
-    borderColor: "#475569",
+    borderColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: radius.sm,

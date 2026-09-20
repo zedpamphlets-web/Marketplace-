@@ -36,23 +36,20 @@ export function ShopCard({ shop }: { shop: ShopCardData }) {
             </Text>
           </View>
         )}
+
         {shop.is_open === false ? (
           <View style={styles.closedBadge}>
             <Text style={styles.closedText}>Closed</Text>
           </View>
         ) : null}
-      </View>
 
-      <Text style={styles.name} numberOfLines={1}>
-        {shop.name}
-      </Text>
-      {shop.category ? (
-        <Text style={styles.category} numberOfLines={1}>
-          {shop.category}
-        </Text>
-      ) : null}
-      <View style={styles.meta}>
-        <Text style={styles.rating}>★ {(shop.rating ?? 5).toFixed(1)}</Text>
+        {/* Name + rating overlaid on the image */}
+        <View style={styles.caption}>
+          <Text style={styles.name} numberOfLines={1}>
+            {shop.name}
+          </Text>
+          <Text style={styles.rating}>★ {(shop.rating ?? 5).toFixed(1)}</Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -68,11 +65,10 @@ const styles = StyleSheet.create({
   },
   thumb: {
     width: CARD_WIDTH,
-    height: 96,
+    height: 110,
     borderRadius: radius.md,
     backgroundColor: colors.bg,
     overflow: "hidden",
-    marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -88,15 +84,15 @@ const styles = StyleSheet.create({
   },
   initials: {
     color: "#fff",
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: typography.displayFont,
     letterSpacing: 0.5,
   },
   closedBadge: {
     position: "absolute",
-    bottom: 6,
+    top: 6,
     left: 6,
-    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    backgroundColor: "rgba(15, 23, 42, 0.75)",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: radius.xs,
@@ -106,25 +102,24 @@ const styles = StyleSheet.create({
     fontSize: typography.micro,
     fontFamily: typography.bodySemibold,
   },
+  caption: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: "rgba(15, 23, 42, 0.72)",
+  },
   name: {
     fontSize: typography.small,
     fontFamily: typography.bodySemibold,
-    color: colors.text,
-  },
-  category: {
-    fontSize: typography.tiny,
-    color: colors.textMuted,
-    fontFamily: typography.bodyMedium,
-    marginTop: 2,
-  },
-  meta: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 3,
+    color: "#FFFFFF",
   },
   rating: {
     fontSize: typography.tiny,
-    color: colors.textSecondary,
+    color: "rgba(255,255,255,0.9)",
     fontFamily: typography.bodyMedium,
+    marginTop: 1,
   },
 });

@@ -1,7 +1,5 @@
 // app/shop/[id].tsx
-// Shop page — UI matched to the provided Shop screenshot.
-// Shows shop header, promo banner, category pills, product grid with full Add to Cart buttons.
-// Data from Supabase only (no fake products).
+// Shop page — header, real banner only, category pills, product grid.
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -20,6 +18,7 @@ import Svg, { Path } from "react-native-svg";
 import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
 import { ProductCard, type ProductCardData } from "@/components/ProductCard";
 import { supabase } from "@/lib/supabase";
+import { addToCart } from "@/lib/cart";
 
 type Shop = {
   id: string;
@@ -31,8 +30,6 @@ type Shop = {
   is_open: boolean;
 };
 
-const FALLBACK_CATEGORIES = ["All", "Fashion", "Shoes", "Bags", "Dresses"];
-
 export default function ShopDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [shop, setShop] = useState<Shop | null>(null);
@@ -41,24 +38,29 @@ export default function ShopDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [networkError, setNetworkError] = useState(false);
+  const [toast, setToast] = useState("");
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
       setNetworkError(false);
-      const { data: shopRow } = await supabase
+      const { data: shopRow, error: shopErr } = await supabase
         .from("shops")
         .select("id, name, logo_url, banner_1, category, rating, is_open")
         .eq("id", id)
         .maybeSingle();
 
+      if (shopErr) throw shopErr;
+
       setShop(shopRow as Shop | null);
 
-      const { data: productRows } = await supabase
+      const { data: productRows, error: prodErr } = await supabase
         .from("products")
-        .select("id, shop_id, name, price, image_url, rating, is_deal, category")
+        .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count")
         .eq("shop_id", id)
         .order("created_at", { ascending: false });
+
+      if (prodErr) throw prodErr;
 
       const mapped: ProductCardData[] = (productRows ?? []).map((p: any) => ({
         id: p.id,
@@ -69,10 +71,12 @@ export default function ShopDetailScreen() {
         rating: p.rating,
         is_deal: p.is_deal,
         category: p.category,
+        badges: p.badges,
+        sold_count: p.sold_count,
         shop_name: shopRow?.name ?? null,
       }));
       setProducts(mapped);
-    } catch (e) {
+    } catch (e: any) {
       setNetworkError(true);
       console.warn("Shop load error:", e);
       setShop(null);
@@ -91,19 +95,40 @@ export default function ShopDetailScreen() {
     const fromProducts = Array.from(
       new Set(products.map((p) => p.category).filter(Boolean) as string[])
     );
-    if (fromProducts.length === 0) return FALLBACK_CATEGORIES;
+    if (fromProducts.length === 0) return ["All"];
     return ["All", ...fromProducts];
   }, [products]);
 
   const filtered =
-    activeCategory === "All"
-      ? products
-      : products.filter((p) => p.category === activeCategory);
+    activeCategory === "All" ? products : products.filter((p) => p.category === activeCategory);
 
   if (loading && !shop) {
     return (
       <SafeAreaView style={styles.screen} edges={["top"]}>
         <ActivityIndicator color={colors.primary} style={{ marginTop: 80 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (networkError && !shop) {
+    return (
+      <SafeAreaView style={styles.screen} edges={["top"]}>
+        <View style={styles.notFound}>
+          <Text style={styles.notFoundText}>No internet connection</Text>
+          <Text style={styles.notFoundSub}>Please check your connection and try again.</Text>
+          <Pressable
+            onPress={() => {
+              setLoading(true);
+              load();
+            }}
+            style={styles.retryBtn}
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+          <Pressable onPress={() => router.back()} style={styles.backLink}>
+            <Text style={styles.backLinkText}>Go back</Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
@@ -123,7 +148,6 @@ export default function ShopDetailScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
-      {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
           <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={colors.text} strokeWidth={2}>
@@ -136,9 +160,7 @@ export default function ShopDetailScreen() {
             {shop.logo_url ? (
               <Image source={{ uri: shop.logo_url }} style={styles.logoImg} contentFit="cover" />
             ) : (
-              <Text style={styles.logoInitial}>
-                {shop.name.charAt(0).toUpperCase()}
-              </Text>
+              <Text style={styles.logoInitial}>{shop.name.charAt(0).toUpperCase()}</Text>
             )}
           </View>
           <View style={{ flex: 1 }}>
@@ -161,22 +183,24 @@ export default function ShopDetailScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              load();
+            }}
+            tintColor={colors.primary}
+          />
         }
       >
-        {/* Promo banner — only shown when banner_1 exists */}
+        {/* Real banner only — no fake promo text */}
         {shop.banner_1 ? (
           <View style={styles.promo}>
             <Image source={{ uri: shop.banner_1 }} style={styles.promoImg} contentFit="cover" />
           </View>
         ) : null}
 
-        {/* Category pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pills}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pills}>
           {categories.map((cat) => {
             const active = cat === activeCategory;
             return (
@@ -191,29 +215,42 @@ export default function ShopDetailScreen() {
           })}
         </ScrollView>
 
-        {/* Products header */}
         <View style={styles.productsHeader}>
           <Text style={styles.productsCount}>
             Products · {filtered.length} item{filtered.length !== 1 ? "s" : ""}
           </Text>
-          <Pressable style={styles.sortBtn}>
-            <Text style={styles.sortBtnText}>Sort ▾</Text>
-          </Pressable>
         </View>
 
-        {/* Product grid */}
-        {filtered.length === 0 ? (
-          <Text style={styles.empty}>No products in this category yet.</Text>
-        ) : (
-          <View style={styles.grid}>
-            {filtered.map((p) => (
-              <View key={p.id} style={styles.gridItem}>
-                <ProductCard product={p} variant="shop" />
-              </View>
-            ))}
-          </View>
-        )}
+        <View style={styles.grid}>
+          {filtered.map((p) => (
+            <View key={p.id} style={styles.gridItem}>
+              <ProductCard
+                product={p}
+                variant="shop"
+                onAddToCart={async (prod) => {
+                  await addToCart({
+                    id: prod.id,
+                    name: prod.name,
+                    shopName: shop.name,
+                    price: prod.price,
+                    image_url: prod.image_url,
+                    shop_id: prod.shop_id,
+                  });
+                  setToast("Added to cart");
+                  setTimeout(() => setToast(""), 1400);
+                }}
+              />
+            </View>
+          ))}
+        </View>
+        {filtered.length === 0 ? <Text style={styles.empty}>No products in this category</Text> : null}
       </ScrollView>
+
+      {toast ? (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -228,57 +265,33 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 4,
-  },
-  headerCenter: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
     gap: 10,
   },
+  backBtn: { minWidth: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  headerCenter: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
   logoCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primaryMuted,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
   },
   logoImg: { width: "100%", height: "100%" },
-  logoInitial: {
-    color: "#fff",
-    fontSize: 18,
-    fontFamily: typography.displayFont,
-  },
+  logoInitial: { fontFamily: typography.displayFont, color: colors.primary, fontSize: 18 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  shopName: {
-    fontSize: typography.h3,
-    fontFamily: typography.displaySemibold,
-    color: colors.text,
-    flexShrink: 1,
-  },
+  shopName: { fontFamily: typography.displaySemibold, fontSize: typography.body, color: colors.text, flexShrink: 1 },
   verified: {
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: "#3B82F6",
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   verifiedText: { color: "#fff", fontSize: 10, fontWeight: "700" },
-  shopMeta: {
-    fontSize: typography.tiny,
-    color: colors.textMuted,
-    fontFamily: typography.bodyMedium,
-    marginTop: 1,
-  },
+  shopMeta: { color: colors.textMuted, fontSize: typography.tiny, marginTop: 2 },
   promo: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
@@ -288,29 +301,7 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   promoImg: { width: "100%", height: "100%" },
-  promoFallback: {
-    flex: 1,
-    backgroundColor: "#1F2937",
-    padding: spacing.lg,
-    justifyContent: "center",
-  },
-  promoTitle: {
-    color: "#fff",
-    fontSize: 20,
-    fontFamily: typography.displayFont,
-    lineHeight: 26,
-  },
-  promoSub: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: typography.small,
-    fontFamily: typography.bodyMedium,
-    marginTop: 6,
-  },
-  pills: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    gap: 8,
-  },
+  pills: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 8 },
   pill: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -320,18 +311,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginRight: 8,
   },
-  pillActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  pillText: {
-    fontSize: typography.small,
-    fontFamily: typography.bodySemibold,
-    color: colors.textMuted,
-  },
-  pillTextActive: {
-    color: "#fff",
-  },
+  pillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  pillText: { fontSize: typography.small, fontFamily: typography.bodySemibold, color: colors.textMuted },
+  pillTextActive: { color: "#fff" },
   productsHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -339,20 +321,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,
   },
-  productsCount: {
-    fontSize: typography.small,
-    fontFamily: typography.bodySemibold,
-    color: colors.text,
-  },
-  sortBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  sortBtnText: {
-    fontSize: typography.small,
-    color: colors.textMuted,
-    fontFamily: typography.bodyMedium,
-  },
+  productsCount: { fontSize: typography.small, fontFamily: typography.bodySemibold, color: colors.text },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -360,9 +329,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
   },
-  gridItem: {
-    width: "48%",
-  },
+  gridItem: { width: "48%" },
   empty: {
     textAlign: "center",
     color: colors.textMuted,
@@ -370,23 +337,38 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     marginBottom: spacing.xxl,
   },
-  notFound: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing.xl,
-  },
+  notFound: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
   notFoundText: {
     fontSize: typography.h3,
     fontFamily: typography.bodySemibold,
     color: colors.text,
+    marginBottom: spacing.sm,
+    textAlign: "center",
+  },
+  notFoundSub: {
+    fontSize: typography.small,
+    color: colors.textMuted,
+    textAlign: "center",
+    marginBottom: spacing.lg,
+  },
+  retryBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: radius.md,
     marginBottom: spacing.md,
   },
-  backLink: {
-    padding: spacing.sm,
+  retryText: { color: "#fff", fontFamily: typography.bodySemibold },
+  backLink: { padding: spacing.sm },
+  backLinkText: { color: colors.primary, fontFamily: typography.bodySemibold },
+  toast: {
+    position: "absolute",
+    bottom: 32,
+    alignSelf: "center",
+    backgroundColor: colors.text,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
   },
-  backLinkText: {
-    color: colors.primary,
-    fontFamily: typography.bodySemibold,
-  },
+  toastText: { color: "#fff", fontFamily: typography.bodySemibold, fontSize: typography.small },
 });
