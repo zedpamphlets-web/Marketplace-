@@ -170,3 +170,5 @@ create policy "banner_products_auth_update" on public.banner_products
 create policy "banner_products_auth_delete" on public.banner_products
   for delete to authenticated
   using (true);
+
+alter table public.shops add column if not exists whatsapp_number text;

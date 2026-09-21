@@ -49,7 +49,7 @@ const BANNER_WIDTH = SCREEN_WIDTH - spacing.lg * 2;
 const BANNER_STEP = BANNER_WIDTH + BANNER_GAP;
 const AUTO_SWAP_MS = 4000;
 const PAGE_SIZE = 10;
-const FOR_YOU_PER_CAT = 6;
+const FOR_YOU_PER_CAT = 4;
 
 function mapProduct(p: any): ProductCardData & { original_price?: number | null } {
   return {
@@ -285,9 +285,16 @@ export default function HomeScreen() {
     }
   };
 
+  // IDs already shown in For You — hide them from the bottom Products grid
+  const forYouIds = React.useMemo(() => {
+    const s = new Set<string>();
+    forYouGroups.forEach((g) => g.products.forEach((p) => s.add(p.id)));
+    return s;
+  }, [forYouGroups]);
+
   const filtered = search.trim()
     ? products.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
-    : products;
+    : products.filter((p) => !forYouIds.has(p.id));
 
   const onAdd = async (p: ProductCardData | { id: string; name: string; price: number; image_url?: string | null; shop_id?: string }) => {
     await addToCart({

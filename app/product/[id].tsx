@@ -9,6 +9,8 @@ import {
   Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Modal,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
@@ -35,7 +37,7 @@ type Product = {
   badges: string[] | null;
   sold_count: number | null;
   description?: string | null;
-  shops?: { id: string; name: string } | null;
+  shops?: { id: string; name: string; whatsapp_number?: string | null } | null;
 };
 
 export default function ProductDetailScreen() {
@@ -46,6 +48,7 @@ export default function ProductDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
+  const [chatOpen, setChatOpen] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
   const galleryRef = useRef<ScrollView>(null);
 
@@ -56,7 +59,7 @@ export default function ProductDetailScreen() {
       const { data, error } = await supabase
         .from("products")
         .select(
-          "id, shop_id, name, price, image_url, images, rating, category, badges, sold_count, description, shops(id, name)"
+          "id, shop_id, name, price, image_url, images, rating, category, badges, sold_count, description, shops(id, name, whatsapp_number)"
         )
         .eq("id", id)
         .maybeSingle();
@@ -277,6 +280,36 @@ export default function ProductDetailScreen() {
             </View>
           </View>
 
+          <View style={styles.actionRow}>
+            <Pressable
+              onPress={() => setChatOpen(true)}
+              style={({ pressed }) => [styles.chatBtn, pressed && { opacity: 0.9 }]}
+            >
+              <Text style={styles.chatBtnText}>Chat</Text>
+            </Pressable>
+            <Pressable
+              onPress={async () => {
+                // Buy now: add current qty then go to checkout
+                if (!product) return;
+                await addToCart(
+                  {
+                    id: product.id,
+                    name: product.name,
+                    shopName: product.shops?.name || "",
+                    price: Number(product.price),
+                    image_url: product.image_url,
+                    shop_id: product.shop_id,
+                  },
+                  qty
+                );
+                router.push("/checkout");
+              }}
+              style={({ pressed }) => [styles.buyBtn, pressed && styles.addBtnPressed]}
+            >
+              <Text style={styles.buyBtnText}>Buy</Text>
+            </Pressable>
+          </View>
+
           <Pressable
             onPress={onAdd}
             disabled={adding}
@@ -314,6 +347,42 @@ export default function ProductDetailScreen() {
           </View>
         ) : null}
       </ScrollView>
+
+
+      <Modal visible={chatOpen} transparent animationType="fade" onRequestClose={() => setChatOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setChatOpen(false)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation?.()}>
+            <Text style={styles.modalTitle}>Chat on WhatsApp</Text>
+            <Text style={styles.modalBody}>
+              Continue to WhatsApp to message the seller about this product.
+            </Text>
+            <Pressable
+              style={styles.modalPrimary}
+              onPress={async () => {
+                const raw = product?.shops?.whatsapp_number || "";
+                const digits = raw.replace(/\D/g, "");
+                if (!digits) {
+                  setChatOpen(false);
+                  setToast("Seller has not set a WhatsApp number yet");
+                  setTimeout(() => setToast(""), 2000);
+                  return;
+                }
+                const msg = encodeURIComponent(
+                  `Hi, I'm interested in "${product?.name}" (K${Number(product?.price || 0).toLocaleString()}) on Marketplace.`
+                );
+                const url = `https://wa.me/${digits}?text=${msg}`;
+                setChatOpen(false);
+                await Linking.openURL(url);
+              }}
+            >
+              <Text style={styles.modalPrimaryText}>Open WhatsApp</Text>
+            </Pressable>
+            <Pressable onPress={() => setChatOpen(false)} style={styles.modalCancel}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {toast ? (
         <View style={styles.toast}>
@@ -456,4 +525,51 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   toastText: { color: "#fff", fontFamily: typography.bodySemibold, fontSize: typography.small },
+  actionRow: { flexDirection: "row", gap: 10, marginBottom: 12 },
+  chatBtn: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: "#25D366",
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+  },
+  chatBtnText: { color: "#128C7E", fontFamily: typography.bodyBold, fontSize: typography.body },
+  buyBtn: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  buyBtnText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.body },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.45)",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    borderRadius: radius.lg,
+    padding: 20,
+  },
+  modalTitle: {
+    fontFamily: typography.displaySemibold,
+    fontSize: typography.h3,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  modalBody: { color: colors.textMuted, marginBottom: 16, lineHeight: 20 },
+  modalPrimary: {
+    backgroundColor: "#25D366",
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  modalPrimaryText: { color: "#fff", fontFamily: typography.bodyBold },
+  modalCancel: { paddingVertical: 10, alignItems: "center" },
+  modalCancelText: { color: colors.textMuted, fontFamily: typography.bodySemibold },
 });

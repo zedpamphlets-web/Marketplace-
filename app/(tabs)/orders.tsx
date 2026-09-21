@@ -1,11 +1,18 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
 import { StatusPill, PaymentPill } from "@/components/StatusPill";
 import { EmptyState } from "@/components/Shared";
 import { supabase } from "@/lib/supabase";
+
+type OrderItem = {
+  quantity: number;
+  price_at_purchase: number;
+  products?: { name?: string; image_url?: string | null } | null;
+};
 
 type OrderRow = {
   id: string;
@@ -14,6 +21,7 @@ type OrderRow = {
   payment_status: string | null;
   total: number;
   shop_name?: string;
+  order_items?: OrderItem[];
 };
 
 type Filter = "all" | "unpaid" | "paid" | "processing" | "delivered";
@@ -32,7 +40,7 @@ export default function OrdersScreen() {
         }
         const { data } = await supabase
           .from("orders")
-          .select("id, shop_id, status, payment_status, total")
+          .select("id, shop_id, status, payment_status, total, order_items(quantity, price_at_purchase, products(name, image_url))")
           .eq("customer_id", auth.user.id)
           .order("created_at", { ascending: false });
         const rows = (data as any[]) ?? [];
@@ -121,6 +129,30 @@ export default function OrdersScreen() {
                 <PaymentPill status={item.payment_status} />
                 <StatusPill status={item.status} />
               </View>
+              {(item.order_items ?? []).length > 0 ? (
+                <View style={styles.itemsBox}>
+                  {(item.order_items ?? []).map((line, idx) => (
+                    <View key={idx} style={styles.itemRow}>
+                      {line.products?.image_url ? (
+                        <Image source={{ uri: line.products.image_url }} style={styles.itemThumb} contentFit="cover" />
+                      ) : (
+                        <View style={[styles.itemThumb, { backgroundColor: colors.border }]} />
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.itemName} numberOfLines={1}>
+                          {line.products?.name || "Product"}
+                        </Text>
+                        <Text style={styles.itemMeta}>
+                          ×{line.quantity} · K{" "}
+                          {Number(line.price_at_purchase * line.quantity).toLocaleString("en-ZM", {
+                            maximumFractionDigits: 0,
+                          })}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </View>
             <Text style={styles.chev}>›</Text>
           </Pressable>
@@ -167,4 +199,9 @@ const styles = StyleSheet.create({
   orderSub: { fontSize: typography.small, color: colors.textMuted, marginBottom: 8 },
   pills: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
   chev: { fontSize: 22, color: colors.textFaint, marginLeft: 8 },
+  itemsBox: { marginTop: 10, gap: 6 },
+  itemRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  itemThumb: { width: 36, height: 36, borderRadius: 6 },
+  itemName: { fontFamily: typography.bodySemibold, color: colors.text, fontSize: typography.small },
+  itemMeta: { color: colors.textMuted, fontSize: typography.tiny, marginTop: 1 },
 });
