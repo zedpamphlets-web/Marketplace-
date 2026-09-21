@@ -15,6 +15,13 @@ import { colors, spacing, radius, typography } from "@/lib/theme";
 import { ProductCard, type ProductCardData } from "@/components/ProductCard";
 import { supabase } from "@/lib/supabase";
 import { addToCart } from "@/lib/cart";
+import {
+  readBannerLinksCache,
+  readBannersCache,
+  readProductsCache,
+  setBannerLinkCache,
+  mergeProductsCache,
+} from "@/lib/catalogCache";
 
 export default function PromotionPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,51 +31,84 @@ export default function PromotionPage() {
   const [products, setProducts] = useState<ProductCardData[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
+  const [offline, setOffline] = useState(false);
+
+  const mapRows = (rows: any[]): ProductCardData[] =>
+    rows.map((p: any) => ({
+      id: p.id,
+      shop_id: p.shop_id,
+      name: p.name,
+      price: Number(p.price),
+      image_url: p.image_url,
+      rating: p.rating,
+      is_deal: p.is_deal,
+      category: p.category,
+      badges: p.badges,
+      sold_count: p.sold_count,
+      shop_name: p.shops?.name ?? p.shop_name ?? null,
+    }));
+
+  const loadFromCache = async () => {
+    if (!id) return;
+    const banners = await readBannersCache<any>();
+    const banner = banners.find((b) => b.id === id);
+    if (banner) {
+      setTitle(banner.title || "Promotion");
+      setSubtitle(banner.subtitle ?? null);
+      setImageUrl(banner.image_url ?? null);
+    }
+    const links = await readBannerLinksCache();
+    const ids = links[id] || [];
+    const all = await readProductsCache<any>();
+    const matched = all.filter((p) => ids.includes(p.id));
+    setProducts(mapRows(matched));
+    setOffline(true);
+  };
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
+    setOffline(false);
     try {
-      const { data: banner } = await supabase
+      const { data: banner, error: bErr } = await supabase
         .from("banners")
         .select("title, subtitle, image_url")
         .eq("id", id)
         .maybeSingle();
+      if (bErr) throw bErr;
+
       setTitle(banner?.title || "Promotion");
       setSubtitle(banner?.subtitle ?? null);
       setImageUrl(banner?.image_url ?? null);
 
-      const { data: links } = await supabase
+      const { data: links, error: lErr } = await supabase
         .from("banner_products")
         .select("product_id")
         .eq("banner_id", id);
+      if (lErr) throw lErr;
+
       const ids = (links ?? []).map((l: any) => l.product_id);
+      await setBannerLinkCache(id, ids);
+
       if (ids.length === 0) {
         setProducts([]);
         return;
       }
-      const { data: rows } = await supabase
+
+      const { data: rows, error: pErr } = await supabase
         .from("products")
-        .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, shops(name)")
+        .select(
+          "id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, shops(name)"
+        )
         .in("id", ids);
-      setProducts(
-        (rows ?? []).map((p: any) => ({
-          id: p.id,
-          shop_id: p.shop_id,
-          name: p.name,
-          price: Number(p.price),
-          image_url: p.image_url,
-          rating: p.rating,
-          is_deal: p.is_deal,
-          category: p.category,
-          badges: p.badges,
-          sold_count: p.sold_count,
-          shop_name: p.shops?.name ?? null,
-        }))
-      );
+      if (pErr) throw pErr;
+
+      const mapped = mapRows(rows ?? []);
+      setProducts(mapped);
+      await mergeProductsCache(rows ?? []);
     } catch (e) {
       console.warn(e);
-      setProducts([]);
+      await loadFromCache();
     } finally {
       setLoading(false);
     }
@@ -93,6 +133,9 @@ export default function PromotionPage() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {offline ? (
+          <Text style={styles.offlineNote}>Showing saved products (offline)</Text>
+        ) : null}
         {imageUrl ? (
           <Image source={{ uri: imageUrl }} style={styles.hero} contentFit="cover" />
         ) : null}
@@ -158,6 +201,12 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   content: { padding: spacing.lg, paddingBottom: 40 },
+  offlineNote: {
+    color: colors.warning,
+    fontSize: typography.tiny,
+    marginBottom: 8,
+    fontFamily: typography.bodyMedium,
+  },
   hero: { width: "100%", height: 160, borderRadius: radius.lg, marginBottom: spacing.md },
   title: {
     fontFamily: typography.displaySemibold,

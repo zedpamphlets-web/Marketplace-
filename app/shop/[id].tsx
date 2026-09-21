@@ -19,6 +19,7 @@ import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
 import { ProductCard, type ProductCardData } from "@/components/ProductCard";
 import { supabase } from "@/lib/supabase";
 import { addToCart } from "@/lib/cart";
+import { mergeProductsCache, readProductsCache, readShopsCache } from "@/lib/catalogCache";
 
 type Shop = {
   id: string;
@@ -76,11 +77,37 @@ export default function ShopDetailScreen() {
         shop_name: shopRow?.name ?? null,
       }));
       setProducts(mapped);
+      await mergeProductsCache(productRows ?? []);
     } catch (e: any) {
       setNetworkError(true);
       console.warn("Shop load error:", e);
-      setShop(null);
-      setProducts([]);
+      // Offline fallback from cache
+      const shops = await readShopsCache<any>();
+      const found = shops.find((s) => s.id === id);
+      if (found) {
+        setShop(found as Shop);
+        setNetworkError(false);
+        const cached = await readProductsCache<any>();
+        const mapped = cached
+          .filter((p) => p.shop_id === id)
+          .map((p: any) => ({
+            id: p.id,
+            shop_id: p.shop_id,
+            name: p.name,
+            price: Number(p.price),
+            image_url: p.image_url,
+            rating: p.rating,
+            is_deal: p.is_deal,
+            category: p.category,
+            badges: p.badges,
+            sold_count: p.sold_count,
+            shop_name: found.name ?? null,
+          }));
+        setProducts(mapped);
+      } else {
+        setShop(null);
+        setProducts([]);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);

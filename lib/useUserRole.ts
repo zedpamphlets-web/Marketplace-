@@ -1,6 +1,25 @@
 import { useEffect, useState } from "react";
 import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
+
+const ROLE_CACHE_KEY = "user_role_cache_v1";
+
+async function saveRoleCache(role: UserRole) {
+  try {
+    await AsyncStorage.setItem(ROLE_CACHE_KEY, JSON.stringify(role));
+  } catch { /* ignore */ }
+}
+
+async function readRoleCache(): Promise<UserRole | null> {
+  try {
+    const raw = await AsyncStorage.getItem(ROLE_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as UserRole;
+  } catch {
+    return null;
+  }
+}
 
 export type UserRole =
   | { type: "guest" }
@@ -35,14 +54,20 @@ async function resolveRole(): Promise<UserRole> {
       (riderErr && /network|fetch|failed|offline/i.test(riderErr.message || ""));
 
     if (networkFail) {
+      const cached = await readRoleCache();
+      if (cached && "userId" in cached && cached.userId === userId) return cached;
       return { type: "customer", userId };
     }
 
-    if (admin) return { type: "super_admin", userId };
-    if (shopAdmin?.shop_id) return { type: "shop_admin", userId, shopId: shopAdmin.shop_id };
-    if (rider) return { type: "rider", userId };
-    return { type: "customer", userId };
+    let role: UserRole = { type: "customer", userId };
+    if (admin) role = { type: "super_admin", userId };
+    else if (shopAdmin?.shop_id) role = { type: "shop_admin", userId, shopId: shopAdmin.shop_id };
+    else if (rider) role = { type: "rider", userId };
+    await saveRoleCache(role);
+    return role;
   } catch {
+    const cached = await readRoleCache();
+    if (cached && "userId" in cached && cached.userId === userId) return cached;
     return { type: "customer", userId };
   }
 }

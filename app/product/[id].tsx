@@ -19,6 +19,7 @@ import { ProductCard, type ProductCardData } from "@/components/ProductCard";
 import { ProductBadgeRow } from "@/components/ProductBadges";
 import { supabase } from "@/lib/supabase";
 import { addToCart } from "@/lib/cart";
+import { getCachedProductById, mergeProductsCache, readProductsCache } from "@/lib/catalogCache";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -52,14 +53,16 @@ export default function ProductDetailScreen() {
     if (!id) return;
     setLoading(true);
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("products")
         .select(
           "id, shop_id, name, price, image_url, images, rating, category, badges, sold_count, description, shops(id, name)"
         )
         .eq("id", id)
         .maybeSingle();
+      if (error) throw error;
       setProduct((data as Product) ?? null);
+      if (data) await mergeProductsCache([data]);
 
       if (data?.category) {
         const { data: more } = await supabase
@@ -85,12 +88,36 @@ export default function ProductDetailScreen() {
             shop_name: p.shops?.name ?? null,
           }))
         );
+        if (more?.length) await mergeProductsCache(more);
       } else {
         setSimilar([]);
       }
     } catch (e) {
       console.warn(e);
-      setProduct(null);
+      const cached = await getCachedProductById(id);
+      if (cached) {
+        setProduct(cached as Product);
+        const all = await readProductsCache<any>();
+        const sim = all
+          .filter((p) => p.category && cached.category && p.category === cached.category && p.id !== id)
+          .slice(0, 8)
+          .map((p: any) => ({
+            id: p.id,
+            shop_id: p.shop_id,
+            name: p.name,
+            price: Number(p.price),
+            image_url: p.image_url,
+            rating: p.rating,
+            is_deal: p.is_deal,
+            category: p.category,
+            badges: p.badges,
+            sold_count: p.sold_count,
+            shop_name: p.shop_name ?? null,
+          }));
+        setSimilar(sim);
+      } else {
+        setProduct(null);
+      }
     } finally {
       setLoading(false);
     }

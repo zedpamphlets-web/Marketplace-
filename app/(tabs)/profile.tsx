@@ -9,6 +9,7 @@ import { SimpleProductCard } from "@/components/SimpleProductCard";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/lib/useUserRole";
 import { addToCart } from "@/lib/cart";
+import { mergeProductsCache, readProductsCache } from "@/lib/catalogCache";
 
 export default function ProfileScreen() {
   const role = useUserRole();
@@ -33,7 +34,13 @@ export default function ProfileScreen() {
         const meta = user?.user_metadata || {};
         setName(meta.full_name || meta.name || user?.email?.split("@")[0] || "Guest");
 
-        const rows = productsRes.data ?? [];
+        let rows = productsRes.data ?? [];
+        if (productsRes.error || !rows.length) {
+          const cached = await readProductsCache<any>();
+          rows = cached.filter((x) => x.is_you_might_like).slice(0, 12);
+        } else {
+          await mergeProductsCache(rows);
+        }
         const shopIds = [...new Set(rows.map((p: any) => p.shop_id).filter(Boolean))];
         let shopNames: Record<string, string> = {};
         if (shopIds.length) {

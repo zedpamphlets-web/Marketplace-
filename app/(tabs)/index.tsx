@@ -32,6 +32,16 @@ import {
   readHomeShellCache,
   saveHomeShellCache,
 } from "@/lib/homeCache";
+import {
+  mergeProductsCache,
+  saveShopsCache,
+  saveCategoriesCache,
+  saveBannersCache,
+  readProductsCache,
+  readShopsCache,
+  readCategoriesCache,
+  readBannersCache,
+} from "@/lib/catalogCache";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const BANNER_GAP = spacing.md;
@@ -171,6 +181,9 @@ export default function HomeScreen() {
     setBanners(bannersData);
     setBannerIndex(0);
     bannerIndexRef.current = 0;
+    await saveShopsCache(shopsData);
+    await saveCategoriesCache(catsData);
+    await saveBannersCache(bannersData);
     return { shops: shopsData, categories: catsData, banners: bannersData };
   }, []);
 
@@ -186,6 +199,7 @@ export default function HomeScreen() {
         .order("created_at", { ascending: false })
         .limit(120);
       const pool = (poolRows ?? []).map(mapProduct);
+      await mergeProductsCache(poolRows ?? []);
       await buildForYou(shell.categories, pool);
 
       const first = await fetchProductsPage(0);
@@ -194,15 +208,20 @@ export default function HomeScreen() {
       pageRef.current = 1;
       await saveHomeShellCache(shell);
       await saveHomeProductsCache(first);
+      await mergeProductsCache(first);
     } catch (e) {
       console.warn(e);
       const cachedShell = await readHomeShellCache();
-      const cachedProducts = await readHomeProductsCache();
-      if (cachedShell) {
-        setShops(cachedShell.shops);
-        setCategories(cachedShell.categories);
-        setBanners(cachedShell.banners);
-        await buildForYou(cachedShell.categories, cachedProducts);
+      let cachedProducts = await readHomeProductsCache();
+      if (!cachedProducts.length) cachedProducts = await readProductsCache();
+      const shops = cachedShell?.shops?.length ? cachedShell.shops : await readShopsCache();
+      const cats = cachedShell?.categories?.length ? cachedShell.categories : await readCategoriesCache();
+      const bans = cachedShell?.banners?.length ? cachedShell.banners : await readBannersCache();
+      if (shops.length || cats.length || bans.length) {
+        setShops(shops);
+        setCategories(cats);
+        setBanners(bans);
+        await buildForYou(cats, cachedProducts);
       } else {
         setShops([]);
         setCategories([]);

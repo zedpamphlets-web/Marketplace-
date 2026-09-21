@@ -158,3 +158,15 @@ alter table public.products add column if not exists images text[] default '{}';
 alter table public.products add column if not exists is_recommended boolean default false;
 alter table public.products add column if not exists is_you_might_like boolean default false;
 alter table public.products add column if not exists original_price numeric;
+
+-- Stronger banner_products policies (re-run safely)
+drop policy if exists "banner_products_auth_write" on public.banner_products;
+create policy "banner_products_auth_insert" on public.banner_products
+  for insert to authenticated
+  with check (true);
+create policy "banner_products_auth_update" on public.banner_products
+  for update to authenticated
+  using (true) with check (true);
+create policy "banner_products_auth_delete" on public.banner_products
+  for delete to authenticated
+  using (true);

@@ -5,7 +5,7 @@ const META_KEY = "home_shell_cache_v1";
 
 export async function saveHomeProductsCache(products: unknown[]) {
   try {
-    await AsyncStorage.setItem(KEY, JSON.stringify({ at: Date.now(), products: products.slice(0, 24) }));
+    await AsyncStorage.setItem(KEY, JSON.stringify({ at: Date.now(), products: products.slice(0, 200) }));
   } catch {
     /* ignore */
   }

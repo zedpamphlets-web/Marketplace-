@@ -16,6 +16,12 @@ import { ProductCard, type ProductCardData } from "@/components/ProductCard";
 import { supabase } from "@/lib/supabase";
 import { addToCart } from "@/lib/cart";
 import { emojiForCategory } from "@/lib/categoryIcons";
+import {
+  readCategoriesCache,
+  saveCategoriesCache,
+  readProductsCache,
+  mergeProductsCache,
+} from "@/lib/catalogCache";
 
 type Cat = { id: string; name: string; icon?: string | null; icon_url?: string | null };
 
@@ -32,10 +38,14 @@ export default function CategoriesScreen() {
   const loadCategories = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await supabase.from("categories").select("id, name, icon, icon_url").order("sort_order");
+      const { data, error } = await supabase.from("categories").select("id, name, icon, icon_url").order("sort_order");
+      if (error) throw error;
       setCategories((data as Cat[]) ?? []);
+      await saveCategoriesCache(data ?? []);
     } catch (e) {
       console.warn(e);
+      const cached = await readCategoriesCache<Cat>();
+      setCategories(cached);
     } finally {
       setLoading(false);
     }
@@ -55,30 +65,35 @@ export default function CategoriesScreen() {
     setActiveId(cat.id);
     setActiveName(cat.name);
     setLoadingProducts(true);
+    const mapRow = (p: any) => ({
+      id: p.id,
+      shop_id: p.shop_id,
+      name: p.name,
+      price: Number(p.price),
+      image_url: p.image_url,
+      rating: p.rating,
+      is_deal: p.is_deal,
+      category: p.category,
+      badges: p.badges,
+      sold_count: p.sold_count,
+      shop_name: p.shops?.name ?? p.shop_name ?? null,
+    });
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("products")
         .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, shops(name)")
         .ilike("category", cat.name)
         .order("created_at", { ascending: false });
-      setProducts(
-        (data ?? []).map((p: any) => ({
-          id: p.id,
-          shop_id: p.shop_id,
-          name: p.name,
-          price: Number(p.price),
-          image_url: p.image_url,
-          rating: p.rating,
-          is_deal: p.is_deal,
-          category: p.category,
-          badges: p.badges,
-          sold_count: p.sold_count,
-          shop_name: p.shops?.name ?? null,
-        }))
-      );
+      if (error) throw error;
+      setProducts((data ?? []).map(mapRow));
+      await mergeProductsCache(data ?? []);
     } catch (e) {
       console.warn(e);
-      setProducts([]);
+      const cached = await readProductsCache<any>();
+      const filtered = cached.filter(
+        (p) => p.category && String(p.category).toLowerCase() === cat.name.toLowerCase()
+      );
+      setProducts(filtered.map(mapRow));
     } finally {
       setLoadingProducts(false);
     }

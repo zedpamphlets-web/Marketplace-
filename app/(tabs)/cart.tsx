@@ -6,6 +6,7 @@ import Svg, { Path, Rect, Circle, Polyline } from "react-native-svg";
 import { colors, shadow, typography } from "@/lib/theme";
 import { type ProductCardData } from "@/components/ProductCard";
 import { SimpleProductCard } from "@/components/SimpleProductCard";
+import { mergeProductsCache, readProductsCache } from "@/lib/catalogCache";
 import { supabase } from "@/lib/supabase";
 import { addToCart, readCart, writeCart, type CartLine } from "@/lib/cart";
 import { kwacha } from "@/lib/adminActions";
@@ -30,22 +31,28 @@ export default function CartScreen() {
 
   const load = useCallback(async () => {
     setCart(await readCart());
-    const { data } = await supabase
-      .from("products")
-      .select("id, shop_id, name, price, image_url, original_price")
-      .eq("is_recommended", true)
-      .order("created_at", { ascending: false })
-      .limit(12);
-    setRecs(
-      (data ?? []).map((p: any) => ({
-        id: p.id,
-        shop_id: p.shop_id,
-        name: p.name,
-        price: Number(p.price),
-        image_url: p.image_url,
-        original_price: p.original_price,
-      }))
-    );
+    const map = (p: any) => ({
+      id: p.id,
+      shop_id: p.shop_id,
+      name: p.name,
+      price: Number(p.price),
+      image_url: p.image_url,
+      original_price: p.original_price,
+    });
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, shop_id, name, price, image_url, original_price, is_recommended")
+        .eq("is_recommended", true)
+        .order("created_at", { ascending: false })
+        .limit(12);
+      if (error) throw error;
+      setRecs((data ?? []).map(map));
+      await mergeProductsCache(data ?? []);
+    } catch {
+      const cached = await readProductsCache<any>();
+      setRecs(cached.filter((p) => p.is_recommended).slice(0, 12).map(map));
+    }
   }, []);
 
   useFocusEffect(
