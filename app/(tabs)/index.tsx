@@ -19,6 +19,7 @@ import Svg, { Circle, Line, Path } from "react-native-svg";
 import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
 import { ShopCard, type ShopCardData } from "@/components/ShopCard";
 import { ProductCard, type ProductCardData } from "@/components/ProductCard";
+import { SimpleProductCard } from "@/components/SimpleProductCard";
 import { AppMenu } from "@/components/AppMenu";
 import { SectionHeader, Skeleton } from "@/components/Shared";
 import { supabase } from "@/lib/supabase";
@@ -38,8 +39,9 @@ const BANNER_WIDTH = SCREEN_WIDTH - spacing.lg * 2;
 const BANNER_STEP = BANNER_WIDTH + BANNER_GAP;
 const AUTO_SWAP_MS = 4000;
 const PAGE_SIZE = 10;
+const FOR_YOU_PER_CAT = 6;
 
-function mapProduct(p: any): ProductCardData {
+function mapProduct(p: any): ProductCardData & { original_price?: number | null } {
   return {
     id: p.id,
     shop_id: p.shop_id,
@@ -51,6 +53,7 @@ function mapProduct(p: any): ProductCardData {
     category: p.category,
     badges: p.badges ?? [],
     sold_count: p.sold_count ?? 0,
+    original_price: p.original_price != null ? Number(p.original_price) : null,
   };
 }
 
@@ -73,6 +76,11 @@ function ProductSkeletonGrid() {
   );
 }
 
+type ForYouGroup = {
+  categoryName: string;
+  products: ProductCardData[];
+};
+
 export default function HomeScreen() {
   const role = useUserRole();
   const [search, setSearch] = useState("");
@@ -84,6 +92,7 @@ export default function HomeScreen() {
   const [banners, setBanners] = useState<
     { id: string; title: string | null; subtitle: string | null; image_url: string | null }[]
   >([]);
+  const [forYouGroups, setForYouGroups] = useState<ForYouGroup[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -101,12 +110,44 @@ export default function HomeScreen() {
     const to = from + PAGE_SIZE - 1;
     const { data, error } = await supabase
       .from("products")
-      .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count")
+      .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, original_price")
       .order("created_at", { ascending: false })
       .range(from, to);
     if (error) throw error;
     return (data ?? []).map(mapProduct);
   }, []);
+
+  /** Build For You groups from live categories + products (no hardcoded names). */
+  const buildForYou = useCallback(
+    async (catRows: { id: string; name: string }[], productPool: ProductCardData[]) => {
+      // Prefer categories table order; only include cats that have products
+      const groups: ForYouGroup[] = [];
+      for (const cat of catRows) {
+        const inCat = productPool
+          .filter((p) => p.category && p.category.toLowerCase() === cat.name.toLowerCase())
+          .slice(0, FOR_YOU_PER_CAT);
+        if (inCat.length > 0) {
+          groups.push({ categoryName: cat.name, products: inCat });
+        }
+      }
+      // Also surface any product categories not in the categories table
+      const known = new Set(catRows.map((c) => c.name.toLowerCase()));
+      const extra = new Map<string, ProductCardData[]>();
+      for (const p of productPool) {
+        if (!p.category) continue;
+        const key = p.category;
+        if (known.has(key.toLowerCase())) continue;
+        const list = extra.get(key) || [];
+        if (list.length < FOR_YOU_PER_CAT) list.push(p);
+        extra.set(key, list);
+      }
+      extra.forEach((prods, name) => {
+        if (prods.length) groups.push({ categoryName: name, products: prods });
+      });
+      setForYouGroups(groups);
+    },
+    []
+  );
 
   const loadShell = useCallback(async () => {
     const [{ data: shopRows }, { data: catRows }, { data: bannerRows }] = await Promise.all([
@@ -138,6 +179,15 @@ export default function HomeScreen() {
     pageRef.current = 0;
     try {
       const shell = await loadShell();
+      // Fetch a wider pool for For You grouping
+      const { data: poolRows } = await supabase
+        .from("products")
+        .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, original_price")
+        .order("created_at", { ascending: false })
+        .limit(120);
+      const pool = (poolRows ?? []).map(mapProduct);
+      await buildForYou(shell.categories, pool);
+
       const first = await fetchProductsPage(0);
       setProducts(first);
       setHasMore(first.length >= PAGE_SIZE);
@@ -152,10 +202,12 @@ export default function HomeScreen() {
         setShops(cachedShell.shops);
         setCategories(cachedShell.categories);
         setBanners(cachedShell.banners);
+        await buildForYou(cachedShell.categories, cachedProducts);
       } else {
         setShops([]);
         setCategories([]);
         setBanners([]);
+        setForYouGroups([]);
       }
       if (cachedProducts.length) {
         setProducts(cachedProducts);
@@ -168,7 +220,7 @@ export default function HomeScreen() {
       setInitialLoading(false);
       setRefreshing(false);
     }
-  }, [fetchProductsPage, loadShell]);
+  }, [fetchProductsPage, loadShell, buildForYou]);
 
   const loadMore = useCallback(async () => {
     if (!hasMore || loadingMoreRef.current || search.trim()) return;
@@ -218,11 +270,11 @@ export default function HomeScreen() {
     ? products.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
     : products;
 
-  const onAdd = async (p: ProductCardData) => {
+  const onAdd = async (p: ProductCardData | { id: string; name: string; price: number; image_url?: string | null; shop_id?: string }) => {
     await addToCart({
       id: p.id,
       name: p.name,
-      shopName: p.shop_name || "",
+      shopName: (p as any).shop_name || "",
       price: p.price,
       image_url: p.image_url,
       shop_id: p.shop_id,
@@ -241,7 +293,6 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.screen} edges={["top"]}>
       <AppMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
-      {/* Top row: menu | search + camera | bell | cart */}
       <View style={styles.topBar}>
         <Pressable onPress={() => setMenuOpen(true)} hitSlop={10} style={styles.iconBtn}>
           <View style={styles.menuLine} />
@@ -270,11 +321,7 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <Pressable
-          onPress={() => router.push("/(tabs)/orders")}
-          hitSlop={10}
-          style={styles.iconBtn}
-        >
+        <Pressable onPress={() => router.push("/(tabs)/orders")} hitSlop={10} style={styles.iconBtn}>
           <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.text} strokeWidth={2}>
             <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" />
             <Path d="M13.73 21a2 2 0 0 1-3.46 0" strokeLinecap="round" strokeLinejoin="round" />
@@ -326,12 +373,7 @@ export default function HomeScreen() {
                   onPress={() => router.push(`/promotions/${b.id}` as any)}
                 >
                   {b.image_url ? (
-                    <Image
-                      source={{ uri: b.image_url }}
-                      style={styles.bannerImage}
-                      contentFit="cover"
-                      transition={200}
-                    />
+                    <Image source={{ uri: b.image_url }} style={styles.bannerImage} contentFit="cover" transition={200} />
                   ) : (
                     <View style={styles.bannerTextOnly}>
                       <Text style={styles.bannerTitle} numberOfLines={1}>
@@ -357,8 +399,6 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {/* Category pills removed — use Categories tab */}
-
         {shops.length > 0 ? (
           <View style={styles.block}>
             <SectionHeader
@@ -377,6 +417,47 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
+        {/* For You — dynamic groups from real categories with products */}
+        {!search.trim() && forYouGroups.length > 0 ? (
+          <View style={styles.block}>
+            <Text style={styles.forYouHeading}>For You</Text>
+            {forYouGroups.map((group) => (
+              <View key={group.categoryName} style={styles.forYouGroup}>
+                <View style={styles.forYouHeader}>
+                  <Text style={styles.forYouCat}>{group.categoryName}</Text>
+                  <Pressable
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(tabs)/categories",
+                      } as any)
+                    }
+                    hitSlop={8}
+                  >
+                    <Text style={styles.seeAll}>See all</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.simpleGrid}>
+                  {group.products.map((p) => (
+                    <SimpleProductCard
+                      key={p.id}
+                      product={{
+                        id: p.id,
+                        shop_id: p.shop_id,
+                        name: p.name,
+                        price: p.price,
+                        image_url: p.image_url,
+                        original_price: (p as any).original_price,
+                      }}
+                      onAddToCart={onAdd}
+                    />
+                  ))}
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {/* Existing Products section — unchanged card design */}
         <View style={styles.block}>
           <SectionHeader title="Products" />
           {initialLoading ? (
@@ -426,12 +507,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     gap: 8,
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  iconBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   menuLine: {
     width: 18,
     height: 2,
@@ -451,12 +527,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 40,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: typography.small,
-    color: colors.text,
-    padding: 0,
-  },
+  searchInput: { flex: 1, fontSize: typography.small, color: colors.text, padding: 0 },
   cameraBtn: { padding: 2 },
   scrollContent: { paddingBottom: 40 },
   bannerBlock: { marginTop: spacing.md },
@@ -481,6 +552,34 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
   dotOn: { backgroundColor: colors.primary, width: 16 },
   block: { marginTop: spacing.lg, paddingHorizontal: spacing.lg },
+  forYouHeading: {
+    fontFamily: typography.displaySemibold,
+    fontSize: typography.h3,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  forYouGroup: { marginBottom: spacing.lg },
+  forYouHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.sm,
+  },
+  forYouCat: {
+    fontFamily: typography.bodyBold,
+    fontSize: typography.body,
+    color: colors.text,
+  },
+  seeAll: {
+    color: colors.primary,
+    fontFamily: typography.bodySemibold,
+    fontSize: typography.small,
+  },
+  simpleGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   gridItem: { width: "48%" },
   skelCard: {
@@ -500,7 +599,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: "center",
   },
-  guestText: { color: colors.text, fontFamily: typography.bodyMedium, fontSize: typography.small, marginBottom: 12 },
+  guestText: {
+    color: colors.text,
+    fontFamily: typography.bodyMedium,
+    fontSize: typography.small,
+    marginBottom: 12,
+  },
   signBtn: {
     backgroundColor: colors.primary,
     paddingHorizontal: 20,

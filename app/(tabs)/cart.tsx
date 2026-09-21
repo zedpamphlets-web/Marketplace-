@@ -4,7 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import Svg, { Path, Rect, Circle, Polyline } from "react-native-svg";
 import { colors, shadow, typography } from "@/lib/theme";
-import { ProductCard, type ProductCardData } from "@/components/ProductCard";
+import { type ProductCardData } from "@/components/ProductCard";
+import { SimpleProductCard } from "@/components/SimpleProductCard";
 import { supabase } from "@/lib/supabase";
 import { addToCart, readCart, writeCart, type CartLine } from "@/lib/cart";
 import { kwacha } from "@/lib/adminActions";
@@ -31,9 +32,10 @@ export default function CartScreen() {
     setCart(await readCart());
     const { data } = await supabase
       .from("products")
-      .select("id, shop_id, name, price, image_url")
+      .select("id, shop_id, name, price, image_url, original_price")
+      .eq("is_recommended", true)
       .order("created_at", { ascending: false })
-      .limit(8);
+      .limit(12);
     setRecs(
       (data ?? []).map((p: any) => ({
         id: p.id,
@@ -41,6 +43,7 @@ export default function CartScreen() {
         name: p.name,
         price: Number(p.price),
         image_url: p.image_url,
+        original_price: p.original_price,
       }))
     );
   }, []);
@@ -128,26 +131,31 @@ export default function CartScreen() {
 
         {recs.length > 0 && (
           <>
-            <Text style={styles.recTitle}>Recommended for you</Text>
-            <View style={styles.grid}>
+            <Text style={styles.recTitle}>Recommended</Text>
+            <View style={styles.simpleGrid}>
               {recs.map((p) => (
-                <View key={p.id} style={styles.gridItem}>
-                  <ProductCard
-                    product={p}
-                    variant="home"
-                    onAddToCart={async (item) => {
-                      await addToCart({
-                        id: item.id,
-                        name: item.name,
-                        shopName: item.shop_name || "",
-                        price: item.price,
-                        image_url: item.image_url,
-                        shop_id: item.shop_id,
-                      });
-                      load();
-                    }}
-                  />
-                </View>
+                <SimpleProductCard
+                  key={p.id}
+                  product={{
+                    id: p.id,
+                    shop_id: p.shop_id,
+                    name: p.name,
+                    price: p.price,
+                    image_url: p.image_url,
+                    original_price: (p as any).original_price,
+                  }}
+                  onAddToCart={async (item) => {
+                    await addToCart({
+                      id: item.id,
+                      name: item.name,
+                      shopName: "",
+                      price: item.price,
+                      image_url: item.image_url,
+                      shop_id: item.shop_id,
+                    });
+                    load();
+                  }}
+                />
               ))}
             </View>
           </>

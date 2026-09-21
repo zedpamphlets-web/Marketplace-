@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -6,16 +6,21 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { Image } from "expo-image";
 import Svg, { Path } from "react-native-svg";
-import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
+import { colors, spacing, radius, typography } from "@/lib/theme";
 import { ProductCard, type ProductCardData } from "@/components/ProductCard";
 import { ProductBadgeRow } from "@/components/ProductBadges";
 import { supabase } from "@/lib/supabase";
 import { addToCart } from "@/lib/cart";
+
+const { width: SCREEN_W } = Dimensions.get("window");
 
 type Product = {
   id: string;
@@ -23,6 +28,7 @@ type Product = {
   name: string;
   price: number;
   image_url: string | null;
+  images?: string[] | null;
   rating: number | null;
   category: string | null;
   badges: string[] | null;
@@ -39,6 +45,8 @@ export default function ProductDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const galleryRef = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -46,7 +54,9 @@ export default function ProductDetailScreen() {
     try {
       const { data } = await supabase
         .from("products")
-        .select("id, shop_id, name, price, image_url, rating, category, badges, sold_count, shops(id, name)")
+        .select(
+          "id, shop_id, name, price, image_url, images, rating, category, badges, sold_count, description, shops(id, name)"
+        )
         .eq("id", id)
         .maybeSingle();
       setProduct((data as Product) ?? null);
@@ -54,7 +64,9 @@ export default function ProductDetailScreen() {
       if (data?.category) {
         const { data: more } = await supabase
           .from("products")
-          .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, shops(name)")
+          .select(
+            "id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, shops(name)"
+          )
           .eq("category", data.category)
           .neq("id", id)
           .limit(8);
@@ -87,6 +99,20 @@ export default function ProductDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const photos: string[] = React.useMemo(() => {
+    if (!product) return [];
+    const fromList = Array.isArray(product.images) ? product.images.filter(Boolean) : [];
+    if (fromList.length) return fromList as string[];
+    if (product.image_url) return [product.image_url];
+    return [];
+  }, [product]);
+
+  const onGalleryScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const idx = Math.round(x / SCREEN_W);
+    if (idx !== photoIndex && idx >= 0 && idx < photos.length) setPhotoIndex(idx);
+  };
 
   const onAdd = async () => {
     if (!product) return;
@@ -151,11 +177,31 @@ export default function ProductDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-        <View style={styles.imageWrap}>
-          {product.image_url ? (
-            <Image source={{ uri: product.image_url }} style={styles.image} contentFit="cover" />
+        {/* Image gallery */}
+        <View style={styles.galleryWrap}>
+          {photos.length > 1 ? (
+            <>
+              <ScrollView
+                ref={galleryRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={onGalleryScroll}
+              >
+                {photos.map((uri, i) => (
+                  <Image key={uri + i} source={{ uri }} style={styles.galleryImage} contentFit="cover" />
+                ))}
+              </ScrollView>
+              <View style={styles.dots}>
+                {photos.map((_, i) => (
+                  <View key={i} style={[styles.dot, i === photoIndex && styles.dotOn]} />
+                ))}
+              </View>
+            </>
+          ) : photos.length === 1 ? (
+            <Image source={{ uri: photos[0] }} style={styles.galleryImage} contentFit="cover" />
           ) : (
-            <View style={styles.imagePlaceholder}>
+            <View style={[styles.galleryImage, styles.placeholder]}>
               <Text style={styles.placeholderText}>No image</Text>
             </View>
           )}
@@ -178,6 +224,13 @@ export default function ProductDetailScreen() {
 
           {product.rating != null ? (
             <Text style={styles.rating}>★ {Number(product.rating).toFixed(1)}</Text>
+          ) : null}
+
+          {product.description ? (
+            <View style={styles.descBlock}>
+              <Text style={styles.descTitle}>Description</Text>
+              <Text style={styles.descText}>{product.description}</Text>
+            </View>
           ) : null}
 
           <View style={styles.qtyRow}>
@@ -264,10 +317,21 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   cartLink: { color: colors.primary, fontFamily: typography.bodySemibold, fontSize: typography.small },
-  imageWrap: { width: "100%", aspectRatio: 1, backgroundColor: "#F1F5F9", position: "relative" },
-  image: { width: "100%", height: "100%" },
-  imagePlaceholder: { flex: 1, alignItems: "center", justifyContent: "center" },
+  galleryWrap: { width: SCREEN_W, aspectRatio: 1, backgroundColor: "#F1F5F9", position: "relative" },
+  galleryImage: { width: SCREEN_W, height: SCREEN_W },
+  placeholder: { alignItems: "center", justifyContent: "center" },
   placeholderText: { color: colors.textFaint },
+  dots: {
+    position: "absolute",
+    bottom: 12,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+  },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.5)" },
+  dotOn: { backgroundColor: "#fff", width: 16 },
   badgeOverlay: { position: "absolute", top: 12, left: 12, right: 12 },
   body: { padding: spacing.lg, backgroundColor: colors.surface },
   name: {
@@ -286,7 +350,24 @@ const styles = StyleSheet.create({
   shopLabel: { color: colors.textMuted, fontSize: typography.small },
   shopName: { color: colors.primary, fontFamily: typography.bodySemibold, fontSize: typography.small },
   shopChevron: { color: colors.primary, fontSize: typography.small },
-  rating: { color: colors.textSecondary, fontSize: typography.small, marginBottom: 16 },
+  rating: { color: colors.textSecondary, fontSize: typography.small, marginBottom: 12 },
+  descBlock: {
+    marginBottom: 16,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  descTitle: {
+    fontFamily: typography.bodyBold,
+    fontSize: typography.small,
+    color: colors.text,
+    marginBottom: 6,
+  },
+  descText: {
+    fontSize: typography.body,
+    color: colors.textSecondary,
+    lineHeight: 22,
+  },
   qtyRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -306,7 +387,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   qtyBtnText: { fontSize: 20, color: colors.text, lineHeight: 24 },
-  qtyValue: { fontFamily: typography.bodyBold, fontSize: typography.h3, color: colors.text, minWidth: 28, textAlign: "center" },
+  qtyValue: {
+    fontFamily: typography.bodyBold,
+    fontSize: typography.h3,
+    color: colors.text,
+    minWidth: 28,
+    textAlign: "center",
+  },
   addBtn: {
     backgroundColor: colors.primary,
     borderRadius: radius.md,
@@ -325,7 +412,12 @@ const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   gridItem: { width: "48%" },
   notFound: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
-  notFoundText: { fontSize: typography.h3, fontFamily: typography.bodySemibold, color: colors.text, marginBottom: spacing.md },
+  notFoundText: {
+    fontSize: typography.h3,
+    fontFamily: typography.bodySemibold,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
   link: { color: colors.primary, fontFamily: typography.bodySemibold },
   toast: {
     position: "absolute",

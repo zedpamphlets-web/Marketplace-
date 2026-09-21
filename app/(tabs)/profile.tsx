@@ -4,8 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
 import { colors, spacing, radius, typography } from "@/lib/theme";
-import { ProductCard, type ProductCardData } from "@/components/ProductCard";
-import { SectionHeader } from "@/components/Shared";
+import { type ProductCardData } from "@/components/ProductCard";
+import { SimpleProductCard } from "@/components/SimpleProductCard";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/lib/useUserRole";
 import { addToCart } from "@/lib/cart";
@@ -15,7 +15,7 @@ export default function ProfileScreen() {
   const [products, setProducts] = useState<ProductCardData[]>([]);
   const [name, setName] = useState("Guest");
   const [orderStats, setOrderStats] = useState({ unpaid: 0, paid: 0, delivered: 0 });
-  const guest = role.type === "guest" || role.type === "loading";
+  const guest = role.type === "guest";
 
   useFocusEffect(
     useCallback(() => {
@@ -24,9 +24,10 @@ export default function ProfileScreen() {
           supabase.auth.getUser(),
           supabase
             .from("products")
-            .select("id, shop_id, name, price, image_url, rating, is_deal, category")
+            .select("id, shop_id, name, price, image_url, rating, is_deal, category, original_price")
+            .eq("is_you_might_like", true)
             .order("created_at", { ascending: false })
-            .limit(20),
+            .limit(12),
         ]);
         const user = userData.user;
         const meta = user?.user_metadata || {};
@@ -169,28 +170,33 @@ export default function ProfileScreen() {
           </Pressable>
         )}
 
-        {/* Recommended */}
+        {/* You might like */}
         {products.length > 0 && (
           <View style={styles.productBlock}>
-            <SectionHeader title="You might like" />
-            <View style={styles.grid}>
+            <Text style={styles.mightLikeTitle}>You might like</Text>
+            <View style={styles.simpleGrid}>
               {products.map((p) => (
-                <View key={p.id} style={styles.gridItem}>
-                  <ProductCard
-                    product={p}
-                    variant="home"
-                    onAddToCart={(item) =>
-                      addToCart({
-                        id: item.id,
-                        name: item.name,
-                        shopName: item.shop_name || "",
-                        price: item.price,
-                        image_url: item.image_url,
-                        shop_id: item.shop_id,
-                      })
-                    }
-                  />
-                </View>
+                <SimpleProductCard
+                  key={p.id}
+                  product={{
+                    id: p.id,
+                    shop_id: p.shop_id,
+                    name: p.name,
+                    price: p.price,
+                    image_url: p.image_url,
+                    original_price: (p as any).original_price,
+                  }}
+                  onAddToCart={(item) =>
+                    addToCart({
+                      id: item.id,
+                      name: item.name,
+                      shopName: "",
+                      price: item.price,
+                      image_url: item.image_url,
+                      shop_id: item.shop_id,
+                    })
+                  }
+                />
               ))}
             </View>
           </View>
@@ -332,6 +338,17 @@ const styles = StyleSheet.create({
   productBlock: {
     marginTop: spacing.xl,
     paddingHorizontal: spacing.lg,
+  },
+  mightLikeTitle: {
+    fontFamily: typography.displaySemibold,
+    fontSize: typography.h3,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  simpleGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
   },
   grid: {
     flexDirection: "row",

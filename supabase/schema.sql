@@ -151,3 +151,10 @@ create policy "banner_products_public_read" on public.banner_products for select
 drop policy if exists "banner_products_auth_write" on public.banner_products;
 create policy "banner_products_auth_write" on public.banner_products
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- Product extras for For You / Recommended / multi-image
+alter table public.products add column if not exists description text;
+alter table public.products add column if not exists images text[] default '{}';
+alter table public.products add column if not exists is_recommended boolean default false;
+alter table public.products add column if not exists is_you_might_like boolean default false;
+alter table public.products add column if not exists original_price numeric;

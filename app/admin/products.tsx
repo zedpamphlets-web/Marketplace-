@@ -1,7 +1,17 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Alert, RefreshControl } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  Pressable,
+  Alert,
+  RefreshControl,
+  Switch,
+} from "react-native";
 import { Image } from "expo-image";
-import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
+import { colors, spacing, radius, typography } from "@/lib/theme";
 import { AdminShell } from "@/components/AdminShell";
 import { PrimaryButton, EmptyState } from "@/components/Shared";
 import { supabase } from "@/lib/supabase";
@@ -19,6 +29,9 @@ type Product = {
   category: string | null;
   is_deal: boolean;
   image_url?: string | null;
+  description?: string | null;
+  is_recommended?: boolean;
+  is_you_might_like?: boolean;
   shops?: { name: string } | null;
 };
 
@@ -32,7 +45,10 @@ export default function AdminProducts() {
   const [stock, setStock] = useState("10");
   const [category, setCategory] = useState("");
   const [shopId, setShopId] = useState("");
-  const [localImage, setLocalImage] = useState<string | null>(null);
+  const [description, setDescription] = useState("");
+  const [localImages, setLocalImages] = useState<string[]>([]);
+  const [isRecommended, setIsRecommended] = useState(false);
+  const [isYouMightLike, setIsYouMightLike] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
@@ -42,7 +58,9 @@ export default function AdminProducts() {
     const [{ data: productRows }, { data: shopRows }] = await Promise.all([
       supabase
         .from("products")
-        .select("id, name, price, stock, shop_id, category, is_deal, badges, image_url, shops(name)")
+        .select(
+          "id, name, price, stock, shop_id, category, is_deal, badges, image_url, description, is_recommended, is_you_might_like, shops(name)"
+        )
         .order("created_at", { ascending: false }),
       supabase.from("shops").select("id, name").order("name"),
     ]);
@@ -62,47 +80,75 @@ export default function AdminProducts() {
       setMessage(picked.error);
       return;
     }
-    if (picked.uri) setLocalImage(picked.uri);
+    if (picked.uri) setLocalImages((prev) => [...prev, picked.uri!]);
+  };
+
+  const removeLocalPhoto = (index: number) => {
+    setLocalImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const addProduct = async () => {
     setMessage("");
-    if (!name.trim() || !price || !shopId) {
-      setMessage("Name, price and shop are required.");
+    if (!name.trim() || !price.trim()) {
+      setMessage("Name and price are required.");
+      return;
+    }
+    if (!shopId) {
+      setMessage("Select a shop.");
       return;
     }
     setSaving(true);
-    let image_url: string | null = null;
-    if (localImage) {
-      const up = await uploadImageFromUri(localImage, "products", `product-${Date.now()}.jpg`);
-      if (up.error) {
-        setSaving(false);
-        setMessage(up.error);
+    try {
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < localImages.length; i++) {
+        const up = await uploadImageFromUri(
+          localImages[i],
+          "products",
+          `product-${Date.now()}-${i}.jpg`
+        );
+        if (up.error) {
+          setSaving(false);
+          setMessage(up.error);
+          return;
+        }
+        if (up.url) uploadedUrls.push(up.url);
+      }
+
+      const image_url = uploadedUrls[0] ?? null;
+      const images = uploadedUrls.length ? uploadedUrls : null;
+
+      const { error } = await supabase.from("products").insert({
+        name: name.trim(),
+        price: Number(price),
+        stock: Number(stock || 0),
+        shop_id: shopId,
+        category: category.trim() || null,
+        badges,
+        image_url,
+        images,
+        description: description.trim() || null,
+        is_recommended: isRecommended,
+        is_you_might_like: isYouMightLike,
+      });
+      setSaving(false);
+      if (error) {
+        setMessage(error.message);
         return;
       }
-      image_url = up.url;
+      setName("");
+      setPrice("");
+      setCategory("");
+      setDescription("");
+      setBadges([]);
+      setLocalImages([]);
+      setIsRecommended(false);
+      setIsYouMightLike(false);
+      setMessage("Product saved.");
+      load();
+    } catch (e: any) {
+      setSaving(false);
+      setMessage(e?.message || "Save failed");
     }
-    const { error } = await supabase.from("products").insert({
-      name: name.trim(),
-      price: Number(price),
-      stock: Number(stock || 0),
-      shop_id: shopId,
-      category: category.trim() || null,
-      badges,
-      image_url,
-    });
-    setSaving(false);
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-    setName("");
-    setPrice("");
-    setCategory("");
-    setBadges([]);
-    setLocalImage(null);
-    setMessage("Product saved.");
-    load();
   };
 
   const remove = (id: string) => {
@@ -135,49 +181,106 @@ export default function AdminProducts() {
         }
       >
         <Text style={styles.heading}>Add product</Text>
-        <TextInput style={styles.input} placeholder="Product name" value={name} onChangeText={setName} placeholderTextColor={colors.textFaint} />
-        <TextInput style={styles.input} placeholder="Price (K)" value={price} onChangeText={setPrice} keyboardType="decimal-pad" placeholderTextColor={colors.textFaint} />
-        <TextInput style={styles.input} placeholder="Stock" value={stock} onChangeText={setStock} keyboardType="number-pad" placeholderTextColor={colors.textFaint} />
+        <TextInput
+          style={styles.input}
+          placeholder="Product name"
+          value={name}
+          onChangeText={setName}
+          placeholderTextColor={colors.textFaint}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Price (K)"
+          value={price}
+          onChangeText={setPrice}
+          keyboardType="decimal-pad"
+          placeholderTextColor={colors.textFaint}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Stock"
+          value={stock}
+          onChangeText={setStock}
+          keyboardType="number-pad"
+          placeholderTextColor={colors.textFaint}
+        />
 
-        <Text style={styles.label}>Product photo (from phone)</Text>
-        <Pressable style={styles.pickBtn} onPress={pickPhoto}>
-          {localImage ? (
-            <Image source={{ uri: localImage }} style={styles.preview} contentFit="cover" />
-          ) : (
-            <Text style={styles.pickText}>Choose image from gallery</Text>
-          )}
-        </Pressable>
-        {localImage ? (
-          <Pressable onPress={() => setLocalImage(null)}>
-            <Text style={styles.clear}>Remove photo</Text>
+        <Text style={styles.label}>Description</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Product description (optional)"
+          value={description}
+          onChangeText={setDescription}
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+          placeholderTextColor={colors.textFaint}
+        />
+
+        <Text style={styles.label}>Photos</Text>
+        <View style={styles.photoRow}>
+          {localImages.map((uri, i) => (
+            <View key={uri + i} style={styles.photoThumbWrap}>
+              <Image source={{ uri }} style={styles.photoThumb} contentFit="cover" />
+              <Pressable style={styles.photoRemove} onPress={() => removeLocalPhoto(i)}>
+                <Text style={styles.photoRemoveText}>✕</Text>
+              </Pressable>
+            </View>
+          ))}
+          <Pressable style={styles.addPhotoBtn} onPress={pickPhoto}>
+            <Text style={styles.addPhotoText}>
+              {localImages.length === 0 ? "Add photo" : "Add another photo"}
+            </Text>
           </Pressable>
-        ) : null}
+        </View>
+
+        <Text style={styles.label}>Shop</Text>
+        <View style={styles.chipRow}>
+          {shops.map((s) => (
+            <Pressable
+              key={s.id}
+              onPress={() => setShopId(s.id)}
+              style={[styles.chip, shopId === s.id && styles.chipOn]}
+            >
+              <Text style={[styles.chipText, shopId === s.id && styles.chipTextOn]}>{s.name}</Text>
+            </Pressable>
+          ))}
+        </View>
 
         <Text style={styles.label}>Category</Text>
         <CategorySelect value={category} onChange={setCategory} />
 
         <Text style={styles.label}>Badges</Text>
-        <BadgePicker value={badges} onChange={setBadges} dark />
+        <BadgePicker value={badges} onChange={setBadges} />
 
-        <Text style={styles.label}>Shop</Text>
-        <View style={styles.chipRow}>
-          {shops.map((s) => (
-            <Pressable key={s.id} onPress={() => setShopId(s.id)} style={[styles.chip, shopId === s.id && styles.chipOn]}>
-              <Text style={[styles.chipText, shopId === s.id && styles.chipTextOn]}>{s.name || "Untitled shop"}</Text>
-            </Pressable>
-          ))}
+        <View style={styles.toggleRow}>
+          <Text style={styles.toggleLabel}>Recommended</Text>
+          <Switch
+            value={isRecommended}
+            onValueChange={setIsRecommended}
+            trackColor={{ false: colors.border, true: colors.primaryMuted }}
+            thumbColor={isRecommended ? colors.primary : "#f4f3f4"}
+          />
         </View>
-        {shops.length === 0 ? <Text style={styles.hint}>Create a shop first.</Text> : null}
+        <View style={styles.toggleRow}>
+          <Text style={styles.toggleLabel}>You might like</Text>
+          <Switch
+            value={isYouMightLike}
+            onValueChange={setIsYouMightLike}
+            trackColor={{ false: colors.border, true: colors.primaryMuted }}
+            thumbColor={isYouMightLike ? colors.primary : "#f4f3f4"}
+          />
+        </View>
 
         {message ? <Text style={styles.msg}>{message}</Text> : null}
-        <PrimaryButton label="Save product" onPress={addProduct} loading={saving} disabled={!shopId} />
+        <PrimaryButton label="Save product" onPress={addProduct} loading={saving} />
 
-        <Text style={[styles.heading, { marginTop: spacing.xl }]}>All products</Text>
+        <Text style={[styles.heading, { marginTop: 28 }]}>All products</Text>
         {items.length === 0 ? (
-          <EmptyState title="No products yet" subtitle="Add the first product above." />
+          <EmptyState title="No products yet" />
         ) : (
           items.map((p) => (
-            <View key={p.id} style={[styles.row, shadow.card]}>
+            <View key={p.id} style={styles.row}>
               {p.image_url ? (
                 <Image source={{ uri: p.image_url }} style={styles.thumb} contentFit="cover" />
               ) : (
@@ -186,8 +289,10 @@ export default function AdminProducts() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{p.name}</Text>
                 <Text style={styles.sub}>
-                  {kwacha(p.price)} · stock {p.stock} · {p.shops?.name ?? "Shop"}
-                  {(p as any).badges?.length ? ` · ${(p as any).badges.join(", ")}` : ""}
+                  {kwacha(p.price)}
+                  {p.shops?.name ? ` · ${p.shops.name}` : ""}
+                  {p.is_recommended ? " · Rec" : ""}
+                  {p.is_you_might_like ? " · Like" : ""}
                 </Text>
               </View>
               <Pressable onPress={() => remove(p.id)}>
@@ -209,7 +314,13 @@ const styles = StyleSheet.create({
     color: colors.adminText,
     marginBottom: spacing.sm,
   },
-  label: { fontSize: typography.small, fontFamily: typography.bodySemibold, marginBottom: 6, marginTop: 8, color: colors.adminText },
+  label: {
+    fontSize: typography.small,
+    fontFamily: typography.bodySemibold,
+    marginBottom: 6,
+    marginTop: 8,
+    color: colors.adminText,
+  },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -220,20 +331,40 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     color: colors.text,
   },
-  pickBtn: {
-    height: 120,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+  textArea: { minHeight: 90, paddingTop: 12 },
+  photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: spacing.md },
+  photoThumbWrap: { position: "relative" },
+  photoThumb: { width: 72, height: 72, borderRadius: 8 },
+  photoRemove: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.danger,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
-    marginBottom: 8,
   },
-  pickText: { color: colors.primary, fontFamily: typography.bodySemibold },
-  preview: { width: "100%", height: "100%" },
-  clear: { color: colors.danger, fontFamily: typography.bodySemibold, marginBottom: 8 },
+  photoRemoveText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  addPhotoBtn: {
+    width: 72,
+    height: 72,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surface,
+    padding: 4,
+  },
+  addPhotoText: {
+    color: colors.primary,
+    fontSize: typography.tiny,
+    fontFamily: typography.bodySemibold,
+    textAlign: "center",
+  },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: spacing.md },
   chip: {
     paddingHorizontal: 12,
@@ -246,8 +377,20 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: typography.small, color: colors.textMuted },
   chipTextOn: { color: "#fff" },
-  hint: { color: colors.textMuted, marginBottom: spacing.sm },
-  msg: { color: colors.primary, marginBottom: spacing.sm },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  toggleLabel: {
+    fontFamily: typography.bodySemibold,
+    color: colors.adminText,
+    fontSize: typography.body,
+  },
+  msg: { color: colors.primary, marginVertical: spacing.sm },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -256,6 +399,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radius.md,
     marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   thumb: { width: 44, height: 44, borderRadius: 8 },
   name: { fontFamily: typography.bodyBold, color: colors.text },

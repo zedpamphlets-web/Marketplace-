@@ -115,9 +115,8 @@ export default function CategoriesScreen() {
       </View>
 
       <View style={styles.body}>
-        {/* Sidebar */}
+        {/* Compact sidebar — no "CATEGORIES" header */}
         <ScrollView style={styles.side} showsVerticalScrollIndicator={false}>
-          <Text style={styles.featured}>CATEGORIES</Text>
           <Pressable
             onPress={() => selectCategory(null)}
             style={[styles.sideItem, !activeId && styles.sideOn]}
@@ -141,7 +140,6 @@ export default function CategoriesScreen() {
           )}
         </ScrollView>
 
-        {/* Main */}
         <View style={styles.main}>
           {loading ? (
             <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
@@ -151,9 +149,7 @@ export default function CategoriesScreen() {
               <View style={styles.circleGrid}>
                 {categories
                   .filter((c) =>
-                    search.trim()
-                      ? c.name.toLowerCase().includes(search.trim().toLowerCase())
-                      : true
+                    search.trim() ? c.name.toLowerCase().includes(search.trim().toLowerCase()) : true
                   )
                   .map((c) => (
                     <Pressable key={c.id} style={styles.circleItem} onPress={() => selectCategory(c)}>
@@ -170,9 +166,7 @@ export default function CategoriesScreen() {
                     </Pressable>
                   ))}
               </View>
-              {categories.length === 0 ? (
-                <Text style={styles.empty}>No categories yet</Text>
-              ) : null}
+              {categories.length === 0 ? <Text style={styles.empty}>No categories yet</Text> : null}
             </ScrollView>
           ) : (
             <ScrollView contentContainerStyle={styles.mainContent} showsVerticalScrollIndicator={false}>
@@ -247,27 +241,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   trustText: { fontSize: typography.tiny, color: colors.textMuted },
   trustDot: { color: colors.textFaint },
   body: { flex: 1, flexDirection: "row" },
   side: {
-    width: 110,
+    width: 100,
     borderRightWidth: 1,
     borderRightColor: colors.border,
     backgroundColor: colors.surface,
   },
-  featured: {
-    fontSize: typography.tiny,
-    fontFamily: typography.bodyBold,
-    color: colors.textFaint,
-    padding: 12,
+  emptySide: { padding: 10, color: colors.textMuted, fontSize: typography.tiny },
+  // Compact sidebar items
+  sideItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
-  emptySide: { padding: 12, color: colors.textMuted, fontSize: typography.tiny },
-  sideItem: { paddingHorizontal: 12, paddingVertical: 12 },
   sideOn: { backgroundColor: colors.primaryMuted },
-  sideText: { fontSize: typography.small, color: colors.textSecondary },
+  sideText: { fontSize: typography.small, color: colors.textSecondary, lineHeight: 18 },
   sideTextOn: { color: colors.primary, fontFamily: typography.bodySemibold },
   main: { flex: 1 },
   mainContent: { padding: spacing.md, paddingBottom: 40 },
@@ -284,10 +276,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   backAll: { color: colors.primary, fontFamily: typography.bodySemibold, fontSize: typography.small },
-  circleGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
+  circleGrid: { flexDirection: "row", flexWrap: "wrap" },
   circleItem: {
     width: "33.33%",
     alignItems: "center",
