@@ -63,9 +63,9 @@
       "eas": {
         "projectId": "4f4ef67d-d436-4165-839d-ea090ac1d66e"
       },
-      "supabaseUrl": "",
-      "supabaseAnonKey": "",
-      "paymentApiUrl": ""
+      "supabaseUrl": "https://lgrkckhpgjwxzllqxoot.supabase.co",
+      "supabaseAnonKey": "sb_publishable_3ZRWGK8u5rw6nF9gBYH3fA_ATZRpIsW",
+      "paymentApiUrl": "https://lgrkckhpgjwxzllqxoot.supabase.co/functions/v1"
     }
   }
 }
