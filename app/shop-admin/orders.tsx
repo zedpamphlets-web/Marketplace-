@@ -1,15 +1,22 @@
-import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl, Alert } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  RefreshControl,
+} from "react-native";
 import { Image } from "expo-image";
 import { useFocusEffect } from "expo-router";
 import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
 import { AdminShell } from "@/components/AdminShell";
 import { EmptyState } from "@/components/Shared";
-import { PaymentPill, StatusPill } from "@/components/StatusPill";
+import { StatusPill } from "@/components/StatusPill";
 import { useUserRole } from "@/lib/useUserRole";
 import { supabase } from "@/lib/supabase";
 import { kwacha } from "@/lib/adminActions";
-import { setOrderPayment, setOrderStatus } from "@/lib/orderActions";
+import { setOrderStatus } from "@/lib/orderActions";
 
 type OrderItem = {
   quantity: number;
@@ -23,8 +30,23 @@ type Order = {
   status: string;
   payment_status: string | null;
   delivery_address?: any;
+  shop_confirmed?: boolean | null;
+  created_at?: string;
   order_items?: OrderItem[];
 };
+
+function relativeTime(iso?: string, now = Date.now()): string {
+  if (!iso) return "";
+  const diff = Math.max(0, now - new Date(iso).getTime());
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+  const day = Math.floor(hr / 24);
+  return `${day} day${day === 1 ? "" : "s"} ago`;
+}
 
 export default function ShopAdminOrders() {
   const role = useUserRole();
@@ -32,17 +54,19 @@ export default function ShopAdminOrders() {
   const [items, setItems] = useState<Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
+  const [now, setNow] = useState(Date.now());
 
   const load = useCallback(async () => {
     if (!shopId) return;
     const { data, error } = await supabase
       .from("orders")
       .select(
-        "id, total, status, payment_status, delivery_address, order_items(quantity, price_at_purchase, products(name, image_url))"
+        "id, total, status, payment_status, delivery_address, shop_confirmed, created_at, order_items(quantity, price_at_purchase, products(name, image_url))"
       )
       .eq("shop_id", shopId)
+      .eq("payment_status", "paid")
       .order("created_at", { ascending: false })
-      .limit(80);
+      .limit(100);
     if (error) setMessage(error.message);
     setItems((data as any) ?? []);
     setRefreshing(false);
@@ -54,35 +78,126 @@ export default function ShopAdminOrders() {
     }, [load])
   );
 
-  const markPay = async (id: string, payment_status: "paid" | "unpaid") => {
-    const { error } = await setOrderPayment(id, payment_status);
-    setMessage(error ? error.message : payment_status === "paid" ? "Marked paid." : "Marked unpaid.");
-    load();
-  };
+  // Live relative timestamps
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
 
-  const markStatus = async (id: string, status: "processing" | "delivered") => {
-    const { error } = await setOrderStatus(id, status);
-    setMessage(error ? error.message : status === "delivered" ? "Marked delivered." : "Marked processing.");
-    load();
-  };
-
-  const deleteOrder = (id: string) => {
-    Alert.alert("Delete order?", "This unpaid order will be removed.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await supabase.from("order_items").delete().eq("order_id", id);
-          const { error } = await supabase.from("orders").delete().eq("id", id);
-          if (error) setMessage(error.message);
-          else {
-            setMessage("Order deleted.");
-            load();
-          }
+  // Realtime updates for this shop's paid orders
+  useEffect(() => {
+    if (!shopId) return;
+    const channel = supabase
+      .channel(`shop-orders-${shopId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `shop_id=eq.${shopId}`,
         },
-      },
-    ]);
+        () => {
+          load();
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [shopId, load]);
+
+  const confirmOrder = async (id: string) => {
+    const { error } = await supabase
+      .from("orders")
+      .update({ shop_confirmed: true, status: "processing" })
+      .eq("id", id);
+    if (error) setMessage(error.message);
+    else {
+      setMessage("Order confirmed.");
+      load();
+    }
+  };
+
+  const markDelivered = async (id: string) => {
+    const { error } = await setOrderStatus(id, "delivered");
+    if (error) setMessage(error.message);
+    else {
+      setMessage("Marked delivered.");
+      load();
+    }
+  };
+
+  const isNew = (o: Order) => !o.shop_confirmed && o.status !== "delivered";
+  const isConfirmed = (o: Order) => !!o.shop_confirmed || o.status === "delivered" || o.status === "processing";
+
+  const newOrders = items.filter(isNew);
+  // Avoid double-listing: confirmed = not in new
+  const confirmedOrders = items.filter((o) => !isNew(o));
+
+  const renderCard = (o: Order, section: "new" | "confirmed") => {
+    const lines = o.order_items ?? [];
+    return (
+      <View key={o.id} style={[styles.card, shadow.card]}>
+        <View style={styles.cardTop}>
+          <Text style={styles.id}>#{String(o.id).slice(0, 8)}</Text>
+          <Text style={styles.ago}>{relativeTime(o.created_at, now)}</Text>
+        </View>
+        <Text style={styles.meta}>
+          {o.delivery_address?.full_name || "Customer"}
+          {o.delivery_address?.phone ? ` · ${o.delivery_address.phone}` : ""}
+        </Text>
+        {o.delivery_address?.location ? (
+          <Text style={styles.loc} numberOfLines={2}>
+            {o.delivery_address.location}
+          </Text>
+        ) : null}
+        <Text style={styles.total}>{kwacha(o.total)}</Text>
+        <View style={styles.pills}>
+          <StatusPill status={o.status} />
+        </View>
+
+        {lines.length > 0 ? (
+          <View style={styles.itemsBox}>
+            {lines.map((line, idx) => (
+              <View key={idx} style={styles.itemRow}>
+                {line.products?.image_url ? (
+                  <Image
+                    source={{ uri: line.products.image_url }}
+                    style={styles.itemThumb}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={[styles.itemThumb, { backgroundColor: colors.border }]} />
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemName} numberOfLines={1}>
+                    {line.products?.name || "Product"}
+                  </Text>
+                  <Text style={styles.itemMeta}>
+                    ×{line.quantity} · {kwacha(Number(line.price_at_purchase) * Number(line.quantity))}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        <View style={styles.row}>
+          {section === "new" ? (
+            <Pressable style={styles.btn} onPress={() => confirmOrder(o.id)}>
+              <Text style={styles.btnText}>Confirm order</Text>
+            </Pressable>
+          ) : o.status !== "delivered" ? (
+            <Pressable style={styles.btn} onPress={() => markDelivered(o.id)}>
+              <Text style={styles.btnText}>Mark delivered</Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.doneLabel}>Delivered</Text>
+          )}
+        </View>
+      </View>
+    );
   };
 
   return (
@@ -100,74 +215,24 @@ export default function ShopAdminOrders() {
         }
       >
         {message ? <Text style={styles.msg}>{message}</Text> : null}
-        {items.length === 0 ? (
-          <EmptyState title="No orders" subtitle="Orders for your shop appear here." />
+
+        <Text style={styles.section}>New orders</Text>
+        {newOrders.length === 0 ? (
+          <Text style={styles.emptySection}>No new paid orders</Text>
         ) : (
-          items.map((o) => {
-            const unpaid =
-              !o.payment_status ||
-              o.payment_status === "unpaid" ||
-              o.payment_status === "pending";
-            const lines = o.order_items ?? [];
-            return (
-              <View key={o.id} style={[styles.card, shadow.card]}>
-                <Text style={styles.id}>#{String(o.id).slice(0, 8)}</Text>
-                <Text style={styles.meta}>
-                  {o.delivery_address?.full_name || "Customer"}
-                  {o.delivery_address?.phone ? ` · ${o.delivery_address.phone}` : ""}
-                </Text>
-                <Text style={styles.total}>{kwacha(o.total)}</Text>
-                <View style={styles.pills}>
-                  <PaymentPill status={o.payment_status} />
-                  <StatusPill status={o.status} />
-                </View>
-
-                {lines.length > 0 ? (
-                  <View style={styles.itemsBox}>
-                    {lines.map((line, idx) => (
-                      <View key={idx} style={styles.itemRow}>
-                        {line.products?.image_url ? (
-                          <Image
-                            source={{ uri: line.products.image_url }}
-                            style={styles.itemThumb}
-                            contentFit="cover"
-                          />
-                        ) : (
-                          <View style={[styles.itemThumb, { backgroundColor: colors.border }]} />
-                        )}
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.itemName} numberOfLines={1}>
-                            {line.products?.name || "Product"}
-                          </Text>
-                          <Text style={styles.itemMeta}>
-                            ×{line.quantity} · {kwacha(Number(line.price_at_purchase) * Number(line.quantity))}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-
-                <View style={styles.row}>
-                  <Pressable style={styles.btn} onPress={() => markPay(o.id, "paid")}>
-                    <Text style={styles.btnText}>Mark paid</Text>
-                  </Pressable>
-                  <Pressable style={styles.btn} onPress={() => markStatus(o.id, "processing")}>
-                    <Text style={styles.btnText}>Processing</Text>
-                  </Pressable>
-                  <Pressable style={styles.btn} onPress={() => markStatus(o.id, "delivered")}>
-                    <Text style={styles.btnText}>Delivered</Text>
-                  </Pressable>
-                  {unpaid ? (
-                    <Pressable style={styles.btnDanger} onPress={() => deleteOrder(o.id)}>
-                      <Text style={styles.btnText}>Delete</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              </View>
-            );
-          })
+          newOrders.map((o) => renderCard(o, "new"))
         )}
+
+        <Text style={[styles.section, { marginTop: spacing.lg }]}>Confirmed orders</Text>
+        {confirmedOrders.length === 0 ? (
+          <Text style={styles.emptySection}>No confirmed orders yet</Text>
+        ) : (
+          confirmedOrders.map((o) => renderCard(o, "confirmed"))
+        )}
+
+        {items.length === 0 ? (
+          <EmptyState title="No paid orders" subtitle="Paid orders for your shop appear here." />
+        ) : null}
       </ScrollView>
     </AdminShell>
   );
@@ -176,6 +241,15 @@ export default function ShopAdminOrders() {
 const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: 40 },
   msg: { color: colors.primary, marginBottom: spacing.sm },
+  section: {
+    fontFamily: typography.bodyBold,
+    fontSize: typography.small,
+    color: colors.adminMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: spacing.sm,
+  },
+  emptySection: { color: colors.adminMuted, marginBottom: spacing.md, fontSize: typography.small },
   card: {
     backgroundColor: colors.adminCard,
     borderRadius: radius.md,
@@ -184,10 +258,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  id: { color: colors.adminText, fontFamily: typography.bodyBold, marginBottom: 4 },
-  meta: { color: colors.adminMuted, fontSize: typography.tiny, marginBottom: 4 },
-  total: { color: colors.primary, fontFamily: typography.bodyBold, marginBottom: 8 },
-  pills: { flexDirection: "row", gap: 6, marginBottom: 10, flexWrap: "wrap" },
+  cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  id: { color: colors.adminText, fontFamily: typography.bodyBold },
+  ago: { color: colors.adminMuted, fontSize: typography.tiny },
+  meta: { color: colors.adminMuted, fontSize: typography.tiny, marginTop: 4 },
+  loc: { color: colors.adminMuted, fontSize: typography.tiny, marginTop: 2 },
+  total: { color: colors.primary, fontFamily: typography.bodyBold, marginVertical: 6 },
+  pills: { flexDirection: "row", gap: 6, marginBottom: 8, flexWrap: "wrap" },
   itemsBox: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
@@ -202,15 +279,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   btn: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: radius.sm,
   },
   btnText: { color: "#fff", fontFamily: typography.bodySemibold, fontSize: typography.small },
-  btnDanger: {
-    backgroundColor: colors.danger,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radius.sm,
-  },
+  doneLabel: { color: colors.success, fontFamily: typography.bodySemibold },
 });

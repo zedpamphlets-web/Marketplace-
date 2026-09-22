@@ -188,8 +188,30 @@ export default function HomeScreen() {
   }, []);
 
   const loadFirstPage = useCallback(async () => {
-    setInitialLoading(true);
     pageRef.current = 0;
+    // Offline-first: paint cache immediately if present
+    try {
+      const cachedShell = await readHomeShellCache();
+      let cachedProducts = await readHomeProductsCache();
+      if (!cachedProducts.length) cachedProducts = await readProductsCache();
+      if (cachedShell || cachedProducts.length) {
+        if (cachedShell) {
+          setShops(cachedShell.shops);
+          setCategories(cachedShell.categories);
+          setBanners(cachedShell.banners);
+          await buildForYou(cachedShell.categories, cachedProducts);
+        }
+        if (cachedProducts.length) {
+          setProducts(cachedProducts);
+          setHasMore(false);
+        }
+        setInitialLoading(false);
+      } else {
+        setInitialLoading(true);
+      }
+    } catch {
+      setInitialLoading(true);
+    }
     try {
       const shell = await loadShell();
       // Fetch a wider pool for For You grouping

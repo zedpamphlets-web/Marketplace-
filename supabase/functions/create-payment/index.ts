@@ -1,8 +1,5 @@
-// POST { provider, orderId, phone } → starts a Lipila mobile-money collection.
-// The Lipila secret key stays server-side (Deno.env) and is never sent to
-// the app. Deploy with: supabase functions deploy create-payment
-
-import { corsHeaders, requireUser, serviceClient, loadOwnedOrder, lipilaFetch } from "../_shared/lipila.ts";
+// POST { provider, groupId, phone } → Lipila collection for an order group.
+import { corsHeaders, requireUser, serviceClient, loadOwnedGroup, loadOwnedOrder, lipilaFetch } from "../_shared/lipila.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -15,26 +12,43 @@ Deno.serve(async (req) => {
       return json({ error: "Not signed in." }, 401);
     }
 
-    const { orderId, phone } = await req.json();
-    if (!orderId || !phone) {
-      return json({ error: "Missing orderId or phone." }, 400);
+    const body = await req.json();
+    const groupId = body.groupId || body.orderId;
+    const phone = body.phone;
+    if (!groupId || !phone) {
+      return json({ error: "Missing groupId or phone." }, 400);
     }
 
     const db = serviceClient();
-    const order = await loadOwnedOrder(db, orderId, userId);
-    if (!order) {
-      return json({ error: "Order not found." }, 404);
+
+    // Prefer order group; fall back to single order for legacy clients
+    let referenceId = groupId;
+    let amount = 0;
+    let alreadyPaid = false;
+
+    const group = await loadOwnedGroup(db, groupId, userId);
+    if (group) {
+      amount = Number(group.total);
+      alreadyPaid = group.payment_status === "paid";
+      referenceId = group.id;
+    } else {
+      const order = await loadOwnedOrder(db, groupId, userId);
+      if (!order) {
+        return json({ error: "Order group not found." }, 404);
+      }
+      amount = Number(order.total);
+      alreadyPaid = order.payment_status === "paid";
+      referenceId = order.id;
     }
-    if (order.payment_status === "paid") {
+
+    if (alreadyPaid) {
       return json({ error: "This order is already paid." }, 409);
     }
 
-    // Amount comes from the order row in the database — set by
-    // create_order() from real product prices — never from the request.
     const { ok, json: lipilaBody } = await lipilaFetch("/collections/mobile-money", {
-      referenceId: order.id,
-      amount: order.total,
-      narration: `Order ${order.id}`,
+      referenceId,
+      amount,
+      narration: `Order group ${referenceId}`,
       accountNumber: phone,
       currency: "ZMW",
     });

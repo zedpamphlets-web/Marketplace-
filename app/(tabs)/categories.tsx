@@ -1,3 +1,7 @@
+/**
+ * Categories — Temu-style: Featured sidebar + Shop by category circular grid.
+ * Offline-first: show cache immediately, refresh in background.
+ */
 import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
@@ -31,21 +35,35 @@ export default function CategoriesScreen() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeName, setActiveName] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [toast, setToast] = useState("");
+  const [hasCache, setHasCache] = useState(false);
 
   const loadCategories = useCallback(async () => {
-    setLoading(true);
+    // Offline-first: paint cache immediately
+    const cached = await readCategoriesCache<Cat>();
+    if (cached.length) {
+      setCategories(cached);
+      setHasCache(true);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     try {
-      const { data, error } = await supabase.from("categories").select("id, name, icon, icon_url").order("sort_order");
+      const { data, error } = await supabase
+        .from("categories")
+        .select("id, name, icon, icon_url")
+        .order("sort_order");
       if (error) throw error;
       setCategories((data as Cat[]) ?? []);
       await saveCategoriesCache(data ?? []);
     } catch (e) {
       console.warn(e);
-      const cached = await readCategoriesCache<Cat>();
-      setCategories(cached);
+      if (!cached.length) {
+        const again = await readCategoriesCache<Cat>();
+        setCategories(again);
+      }
     } finally {
       setLoading(false);
     }
@@ -64,7 +82,7 @@ export default function CategoriesScreen() {
     }
     setActiveId(cat.id);
     setActiveName(cat.name);
-    setLoadingProducts(true);
+
     const mapRow = (p: any) => ({
       id: p.id,
       shop_id: p.shop_id,
@@ -78,10 +96,25 @@ export default function CategoriesScreen() {
       sold_count: p.sold_count,
       shop_name: p.shops?.name ?? p.shop_name ?? null,
     });
+
+    // Show cached products for this category immediately
+    const cached = await readProductsCache<any>();
+    const local = cached
+      .filter((p) => p.category && String(p.category).toLowerCase() === cat.name.toLowerCase())
+      .map(mapRow);
+    if (local.length) {
+      setProducts(local);
+      setLoadingProducts(false);
+    } else {
+      setLoadingProducts(true);
+    }
+
     try {
       const { data, error } = await supabase
         .from("products")
-        .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, shops(name)")
+        .select(
+          "id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, shops(name)"
+        )
         .ilike("category", cat.name)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -89,11 +122,7 @@ export default function CategoriesScreen() {
       await mergeProductsCache(data ?? []);
     } catch (e) {
       console.warn(e);
-      const cached = await readProductsCache<any>();
-      const filtered = cached.filter(
-        (p) => p.category && String(p.category).toLowerCase() === cat.name.toLowerCase()
-      );
-      setProducts(filtered.map(mapRow));
+      if (!local.length) setProducts([]);
     } finally {
       setLoadingProducts(false);
     }
@@ -104,6 +133,9 @@ export default function CategoriesScreen() {
     : products;
 
   const showBrowse = !activeId;
+  const searchCats = search.trim()
+    ? categories.filter((c) => c.name.toLowerCase().includes(search.trim().toLowerCase()))
+    : categories;
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
@@ -124,64 +156,62 @@ export default function CategoriesScreen() {
       </View>
 
       <View style={styles.trust}>
-        <Text style={styles.trustText}>Secure checkout</Text>
-        <Text style={styles.trustDot}>·</Text>
-        <Text style={styles.trustText}>Fast delivery</Text>
+        <Text style={styles.trustText}>✓ Secure checkout</Text>
+        <Text style={styles.trustDot}>|</Text>
+        <Text style={styles.trustText}>✓ Fast delivery</Text>
       </View>
 
       <View style={styles.body}>
-        {/* Compact sidebar — no "CATEGORIES" header */}
+        {/* Featured sidebar */}
         <ScrollView style={styles.side} showsVerticalScrollIndicator={false}>
+          <View style={styles.sideHeader}>
+            <View style={styles.sideAccent} />
+            <Text style={styles.sideHeaderText}>Featured</Text>
+          </View>
           <Pressable
             onPress={() => selectCategory(null)}
             style={[styles.sideItem, !activeId && styles.sideOn]}
           >
             <Text style={[styles.sideText, !activeId && styles.sideTextOn]}>All</Text>
           </Pressable>
-          {categories.length === 0 && !loading ? (
-            <Text style={styles.emptySide}>No categories</Text>
-          ) : (
-            categories.map((c) => (
-              <Pressable
-                key={c.id}
-                onPress={() => selectCategory(c)}
-                style={[styles.sideItem, activeId === c.id && styles.sideOn]}
-              >
-                <Text style={[styles.sideText, activeId === c.id && styles.sideTextOn]} numberOfLines={2}>
-                  {c.name}
-                </Text>
-              </Pressable>
-            ))
-          )}
+          {categories.map((c) => (
+            <Pressable
+              key={c.id}
+              onPress={() => selectCategory(c)}
+              style={[styles.sideItem, activeId === c.id && styles.sideOn]}
+            >
+              <Text style={[styles.sideText, activeId === c.id && styles.sideTextOn]} numberOfLines={2}>
+                {c.name}
+              </Text>
+            </Pressable>
+          ))}
         </ScrollView>
 
         <View style={styles.main}>
-          {loading ? (
+          {loading && !hasCache ? (
             <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
           ) : showBrowse ? (
             <ScrollView contentContainerStyle={styles.mainContent} showsVerticalScrollIndicator={false}>
               <Text style={styles.section}>Shop by category</Text>
               <View style={styles.circleGrid}>
-                {categories
-                  .filter((c) =>
-                    search.trim() ? c.name.toLowerCase().includes(search.trim().toLowerCase()) : true
-                  )
-                  .map((c) => (
-                    <Pressable key={c.id} style={styles.circleItem} onPress={() => selectCategory(c)}>
-                      <View style={styles.circle}>
-                        {c.icon_url ? (
-                          <Image source={{ uri: c.icon_url }} style={styles.circleImg} contentFit="cover" />
-                        ) : (
-                          <Text style={styles.circleEmoji}>{emojiForCategory(c.icon, c.icon_url)}</Text>
-                        )}
-                      </View>
-                      <Text style={styles.circleName} numberOfLines={2}>
-                        {c.name}
-                      </Text>
-                    </Pressable>
-                  ))}
+                {searchCats.map((c) => (
+                  <Pressable key={c.id} style={styles.circleItem} onPress={() => selectCategory(c)}>
+                    <View style={styles.circle}>
+                      {c.icon_url ? (
+                        <Image source={{ uri: c.icon_url }} style={styles.circleImg} contentFit="cover" />
+                      ) : (
+                        <Text style={styles.circleEmoji}>{emojiForCategory(c.icon, c.icon_url)}</Text>
+                      )}
+                    </View>
+                    <Text style={styles.circleName} numberOfLines={2}>
+                      {c.name}
+                    </Text>
+                  </Pressable>
+                ))}
               </View>
-              {categories.length === 0 ? <Text style={styles.empty}>No categories yet</Text> : null}
+              {categories.length === 0 && !loading ? (
+                <Text style={styles.empty}>No categories yet</Text>
+              ) : null}
             </ScrollView>
           ) : (
             <ScrollView contentContainerStyle={styles.mainContent} showsVerticalScrollIndicator={false}>
@@ -191,7 +221,7 @@ export default function CategoriesScreen() {
                   <Text style={styles.backAll}>← All</Text>
                 </Pressable>
               </View>
-              {loadingProducts ? (
+              {loadingProducts && products.length === 0 ? (
                 <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
               ) : (
                 <>
@@ -255,23 +285,41 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 6,
-    paddingVertical: 6,
+    gap: 8,
+    paddingVertical: 8,
+    backgroundColor: "#ECFDF5",
   },
-  trustText: { fontSize: typography.tiny, color: colors.textMuted },
-  trustDot: { color: colors.textFaint },
+  trustText: { fontSize: typography.tiny, color: "#15803D", fontFamily: typography.bodyMedium },
+  trustDot: { color: "#86EFAC" },
   body: { flex: 1, flexDirection: "row" },
   side: {
-    width: 100,
+    width: 108,
     borderRightWidth: 1,
     borderRightColor: colors.border,
     backgroundColor: colors.surface,
   },
-  emptySide: { padding: 10, color: colors.textMuted, fontSize: typography.tiny },
-  // Compact sidebar items
-  sideItem: {
+  sideHeader: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 6,
+  },
+  sideAccent: {
+    width: 4,
+    height: 14,
+    borderRadius: 2,
+    backgroundColor: "#F97316",
+  },
+  sideHeaderText: {
+    fontFamily: typography.bodyBold,
+    fontSize: typography.small,
+    color: colors.text,
+  },
+  sideItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 11,
   },
   sideOn: { backgroundColor: colors.primaryMuted },
   sideText: { fontSize: typography.small, color: colors.textSecondary, lineHeight: 18 },
@@ -281,10 +329,8 @@ const styles = StyleSheet.create({
   section: {
     fontFamily: typography.bodyBold,
     color: colors.text,
-    marginBottom: spacing.lg,
-    fontSize: typography.small,
-    letterSpacing: 0.3,
-    textTransform: "uppercase",
+    marginBottom: spacing.md,
+    fontSize: typography.body,
   },
   productHeader: {
     flexDirection: "row",
@@ -297,30 +343,28 @@ const styles = StyleSheet.create({
   circleItem: {
     width: "33.33%",
     alignItems: "center",
-    marginBottom: spacing.xl,
-    paddingHorizontal: 6,
+    marginBottom: spacing.lg,
+    paddingHorizontal: 4,
   },
   circle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.primaryMuted,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   circleImg: { width: "100%", height: "100%" },
   circleEmoji: { fontSize: 30 },
   circleName: {
-    marginTop: 10,
+    marginTop: 8,
     textAlign: "center",
-    fontSize: typography.small,
-    fontFamily: typography.bodySemibold,
+    fontSize: 11,
+    fontFamily: typography.bodyMedium,
     color: colors.text,
-    lineHeight: 18,
-    minHeight: 36,
+    lineHeight: 14,
+    paddingHorizontal: 2,
   },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   gridItem: { width: "48.5%" },

@@ -1,100 +1,183 @@
-import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TextInput, Pressable } from "react-native";
+/**
+ * Page 1 — Delivery details (Namecheap-style step).
+ * Verifies province, district, area, phone, then continues to payment.
+ */
+import React, { useCallback, useMemo, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  Pressable,
+  Modal,
+  FlatList,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
-import { PrimaryButton } from "@/components/Shared";
-import { readCart, writeCart, type CartLine } from "@/lib/cart";
-import { supabase } from "@/lib/supabase";
-import { LIPILA_PROVIDERS, toZambianMsisdn, type LipilaProvider } from "@/lib/lipila";
+import { readCart, type CartLine } from "@/lib/cart";
+import { toZambianMsisdn } from "@/lib/lipila";
 
-export default function CheckoutScreen() {
+const PROVINCES = [
+  "Central",
+  "Copperbelt",
+  "Eastern",
+  "Luapula",
+  "Lusaka",
+  "Muchinga",
+  "Northern",
+  "North-Western",
+  "Southern",
+  "Western",
+] as const;
+
+const DISTRICTS: Record<(typeof PROVINCES)[number], string[]> = {
+  Central: ["Kabwe", "Kapiri Mposhi", "Mkushi", "Mumbwa", "Serenje", "Chibombo", "Chisamba"],
+  Copperbelt: ["Ndola", "Kitwe", "Chingola", "Mufulira", "Luanshya", "Kalulushi", "Chililabombwe"],
+  Eastern: ["Chipata", "Katete", "Lundazi", "Petauke", "Nyimba", "Chadiza"],
+  Luapula: ["Mansa", "Samfya", "Kawambwa", "Nchelenge", "Mwense"],
+  Lusaka: ["Lusaka", "Kafue", "Chongwe", "Luangwa", "Chilanga"],
+  Muchinga: ["Chinsali", "Mpika", "Isoka", "Nakonde"],
+  Northern: ["Kasama", "Mbala", "Mpulungu", "Mungwi", "Luwingu"],
+  "North-Western": ["Solwezi", "Kasempa", "Mwinilunga", "Zambezi"],
+  Southern: ["Livingstone", "Choma", "Mazabuka", "Monze", "Kalomo", "Siavonga"],
+  Western: ["Mongu", "Senanga", "Kaoma", "Sesheke", "Lukulu"],
+};
+
+function DropdownField({
+  label,
+  value,
+  placeholder,
+  options,
+  onSelect,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  options: string[];
+  onSelect: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <Pressable
+        style={[styles.dropdown, disabled && styles.dropdownDisabled]}
+        onPress={() => !disabled && setOpen(true)}
+      >
+        <Text style={value ? styles.dropdownValue : styles.dropdownPlaceholder}>
+          {value || placeholder}
+        </Text>
+        <Text style={styles.chev}>▾</Text>
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.modalBg} onPress={() => setOpen(false)}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{label}</Text>
+            <FlatList
+              data={options}
+              keyExtractor={(item) => item}
+              style={{ maxHeight: 320 }}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={styles.optionRow}
+                  onPress={() => {
+                    onSelect(item);
+                    setOpen(false);
+                  }}
+                >
+                  <Text style={styles.optionText}>{item}</Text>
+                </Pressable>
+              )}
+            />
+          </View>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+export default function CheckoutDeliveryScreen() {
   const [lines, setLines] = useState<CartLine[]>([]);
-  const [fullName, setFullName] = useState("");
+  const [province, setProvince] = useState("");
+  const [district, setDistrict] = useState("");
+  const [area, setArea] = useState("");
   const [phone, setPhone] = useState("");
-  const [location, setLocation] = useState("");
-  const [provider, setProvider] = useState<LipilaProvider | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verified, setVerified] = useState(false);
   const [message, setMessage] = useState("");
-  const [deliveryFee, setDeliveryFee] = useState(50);
 
   useFocusEffect(
     useCallback(() => {
       readCart().then(setLines);
-      (async () => {
-        const { data } = await supabase.from("settings").select("delivery_fee_local").eq("id", "global").maybeSingle();
-        if (data?.delivery_fee_local != null) setDeliveryFee(Number(data.delivery_fee_local));
-      })();
+      setVerified(false);
     }, [])
   );
 
-  const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
-  const total = subtotal + deliveryFee;
+  const districtOptions = useMemo(() => {
+    if (!province || !(province in DISTRICTS)) return [];
+    return DISTRICTS[province as (typeof PROVINCES)[number]];
+  }, [province]);
 
-  const handlePay = async () => {
+  const onProvince = (p: string) => {
+    setProvince(p);
+    setDistrict("");
+    setVerified(false);
+  };
+
+  const verify = () => {
     setMessage("");
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) {
-      router.push("/auth/login");
-      return;
-    }
     if (!lines.length) {
       setMessage("Your cart is empty.");
       return;
     }
-    if (!fullName.trim()) {
-      setMessage("Enter your name.");
+    if (!province) {
+      setMessage("Select a province.");
+      return;
+    }
+    if (!district) {
+      setMessage("Select a district.");
+      return;
+    }
+    if (!area.trim()) {
+      setMessage("Enter your area and plot number.");
       return;
     }
     if (!phone.trim()) {
       setMessage("Enter your phone number.");
       return;
     }
-    if (!location.trim()) {
-      setMessage("Enter your location.");
+    const msisdn = toZambianMsisdn(phone);
+    if (msisdn.length < 12) {
+      setMessage("Enter a valid Zambian phone number.");
       return;
     }
-    if (!provider) {
-      setMessage("Choose a payment method: Airtel, MTN, or Zamtel.");
+    setVerifying(true);
+    setTimeout(() => {
+      setVerifying(false);
+      setVerified(true);
+    }, 600);
+  };
+
+  const continueToPay = () => {
+    if (!verified) {
+      setMessage("Please verify your delivery details first.");
       return;
     }
-
-    setLoading(true);
-    try {
-      const shopId = lines[0].shop_id;
-      if (!shopId) throw new Error("Cart items are missing a shop.");
-
-      const msisdn = toZambianMsisdn(phone);
-      // Pricing is computed server-side by create_order() from the current
-      // product prices — we only send product ids and quantities, never
-      // the price shown on screen, so a tampered local cart can't be used
-      // to pay less than the real total.
-      const { data: order, error } = await supabase
-        .rpc("create_order", {
-          p_shop_id: shopId,
-          p_items: lines.map((l) => ({ product_id: l.id, qty: l.qty })),
-          p_full_name: fullName.trim(),
-          p_phone: msisdn,
-          p_location: location.trim(),
-          p_payment_method: provider,
-        })
-        .single();
-      if (error || !order) throw new Error(error?.message || "Could not create order.");
-
-      await writeCart([]);
-      router.replace({
-        pathname: "/pay",
-        params: {
-          orderId: order.order_id,
-          provider,
-          phone: msisdn,
-        },
-      });
-    } catch (e: any) {
-      setMessage(e.message || "Checkout failed.");
-    } finally {
-      setLoading(false);
-    }
+    const location = `${area.trim()}, ${district}, ${province}`;
+    router.push({
+      pathname: "/pay",
+      params: {
+        province,
+        district,
+        area: area.trim(),
+        phone: toZambianMsisdn(phone),
+        location,
+      },
+    });
   };
 
   return (
@@ -103,103 +186,90 @@ export default function CheckoutScreen() {
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Text style={styles.back}>‹</Text>
         </Pressable>
-        <Text style={styles.title}>Checkout</Text>
+        <Text style={styles.title}>Delivery details</Text>
         <View style={{ width: 28 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {/* 1. Name */}
-        <View style={[styles.card, shadow.card]}>
-          <Text style={styles.step}>1 · Name</Text>
-          <Text style={styles.label}>Full name</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Your full name"
-            placeholderTextColor={colors.textFaint}
-            value={fullName}
-            onChangeText={setFullName}
-            autoCapitalize="words"
-          />
-        </View>
-
-        {/* 2. Phone */}
-        <View style={[styles.card, shadow.card]}>
-          <Text style={styles.step}>2 · Phone number</Text>
-          <Text style={styles.label}>Mobile money number</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="0960 000 000"
-            placeholderTextColor={colors.textFaint}
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-          />
-        </View>
-
-        {/* 3. Location */}
-        <View style={[styles.card, shadow.card]}>
-          <Text style={styles.step}>3 · Location</Text>
-          <Text style={styles.label}>Delivery location</Text>
-          <TextInput
-            style={[styles.input, styles.inputTall]}
-            placeholder="Area, street, landmark"
-            placeholderTextColor={colors.textFaint}
-            value={location}
-            onChangeText={setLocation}
-            multiline
-          />
-        </View>
-
-        {/* 4. Payment method */}
-        <View style={[styles.card, shadow.card]}>
-          <Text style={styles.step}>4 · Payment method</Text>
-          <Text style={styles.label}>Choose one</Text>
-          <View style={styles.payCol}>
-            {LIPILA_PROVIDERS.map((p) => {
-              const on = provider === p.id;
-              return (
-                <Pressable
-                  key={p.id}
-                  onPress={() => setProvider(p.id)}
-                  style={[styles.payCard, on && styles.payCardOn]}
-                >
-                  <View style={[styles.radio, on && styles.radioOn]}>
-                    {on ? <View style={styles.radioDot} /> : null}
-                  </View>
-                  <Text style={[styles.payText, on && styles.payTextOn]}>{p.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Subtotal</Text>
-            <Text style={styles.rowValue}>K {subtotal.toFixed(0)}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Delivery</Text>
-            <Text style={styles.rowValue}>K {deliveryFee.toFixed(0)}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>K {total.toFixed(0)}</Text>
-          </View>
-          {message ? <Text style={styles.msg}>{message}</Text> : null}
-        </View>
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <PrimaryButton
-          label={
-            provider
-              ? `Pay K ${total.toFixed(0)} · ${provider === "mtn" ? "MTN" : provider === "airtel" ? "Airtel" : "Zamtel"}`
-              : `Pay K ${total.toFixed(0)}`
-          }
-          onPress={handlePay}
-          loading={loading}
-        />
+      <View style={styles.steps}>
+        <View style={[styles.stepDot, styles.stepOn]} />
+        <View style={styles.stepLine} />
+        <View style={styles.stepDot} />
       </View>
+      <Text style={styles.stepLabel}>Step 1 of 2 · Where should we deliver?</Text>
+
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={[styles.card, shadow.card]}>
+          <DropdownField
+            label="Province"
+            value={province}
+            placeholder="Select province"
+            options={[...PROVINCES]}
+            onSelect={onProvince}
+          />
+          <DropdownField
+            label="District"
+            value={district}
+            placeholder={province ? "Select district" : "Select province first"}
+            options={districtOptions}
+            onSelect={(d) => {
+              setDistrict(d);
+              setVerified(false);
+            }}
+            disabled={!province}
+          />
+          <View style={styles.field}>
+            <Text style={styles.label}>Area / plot number</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Plot 12, Kamwala"
+              placeholderTextColor={colors.textFaint}
+              value={area}
+              onChangeText={(t) => {
+                setArea(t);
+                setVerified(false);
+              }}
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Phone number</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="0977 123 456"
+              placeholderTextColor={colors.textFaint}
+              value={phone}
+              onChangeText={(t) => {
+                setPhone(t);
+                setVerified(false);
+              }}
+              keyboardType="phone-pad"
+            />
+          </View>
+
+          {message ? <Text style={styles.error}>{message}</Text> : null}
+
+          <Pressable
+            style={[styles.verifyBtn, verified && styles.verifyDone]}
+            onPress={verified ? undefined : verify}
+            disabled={verifying}
+          >
+            <Text style={styles.verifyText}>
+              {verifying ? "Verifying…" : verified ? "✓ Verified" : "Verify"}
+            </Text>
+          </Pressable>
+        </View>
+
+        <Text style={styles.cartHint}>
+          {lines.length} item{lines.length === 1 ? "" : "s"} in cart
+        </Text>
+
+        <Pressable
+          style={[styles.continueBtn, !verified && styles.continueOff]}
+          onPress={continueToPay}
+          disabled={!verified}
+        >
+          <Text style={styles.continueText}>Continue to payment</Text>
+        </Pressable>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -209,37 +279,54 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  back: { fontSize: 28, color: colors.text, lineHeight: 30 },
+  back: { fontSize: 32, color: colors.text, width: 28, lineHeight: 36 },
   title: {
-    fontSize: typography.h3,
+    flex: 1,
+    textAlign: "center",
     fontFamily: typography.displaySemibold,
+    fontSize: typography.h3,
     color: colors.text,
   },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  steps: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: spacing.md,
+    gap: 0,
+  },
+  stepDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.border,
+  },
+  stepOn: { backgroundColor: colors.primary },
+  stepLine: { width: 48, height: 2, backgroundColor: colors.border },
+  stepLabel: {
+    textAlign: "center",
+    color: colors.textMuted,
+    fontSize: typography.small,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  content: { padding: spacing.lg, paddingBottom: 40 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.lg,
-    marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  step: {
-    fontSize: typography.small,
-    fontFamily: typography.bodyBold,
-    color: colors.primary,
-    marginBottom: spacing.sm,
-  },
+  field: { marginBottom: spacing.md },
   label: {
-    fontSize: typography.small,
     fontFamily: typography.bodySemibold,
+    fontSize: typography.small,
     color: colors.text,
     marginBottom: 6,
   },
@@ -251,62 +338,69 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: typography.body,
     color: colors.text,
-    backgroundColor: "#fff",
+    backgroundColor: colors.bg,
   },
-  inputTall: { minHeight: 72, textAlignVertical: "top" },
-  payCol: { gap: 10 },
-  payCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderWidth: 1.5,
+  dropdown: {
+    borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 14,
-    backgroundColor: "#fff",
-  },
-  payCardOn: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryMuted,
-  },
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    flexDirection: "row",
     alignItems: "center",
+  },
+  dropdownDisabled: { opacity: 0.5 },
+  dropdownValue: { flex: 1, color: colors.text, fontSize: typography.body },
+  dropdownPlaceholder: { flex: 1, color: colors.textFaint, fontSize: typography.body },
+  chev: { color: colors.textMuted, fontSize: 14 },
+  modalBg: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.4)",
     justifyContent: "center",
+    padding: 24,
   },
-  radioOn: { borderColor: colors.primary },
-  radioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primary,
+  modalCard: {
+    backgroundColor: "#fff",
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    maxHeight: "70%",
   },
-  payText: {
-    fontFamily: typography.bodySemibold,
-    color: colors.text,
+  modalTitle: {
+    fontFamily: typography.bodyBold,
     fontSize: typography.body,
+    marginBottom: 8,
+    color: colors.text,
   },
-  payTextOn: { color: colors.primary },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.md,
+  optionRow: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-  rowLabel: { color: colors.textMuted },
-  rowValue: { fontFamily: typography.bodySemibold, color: colors.text },
-  totalLabel: { fontFamily: typography.bodyBold, fontSize: 16, color: colors.text },
-  totalValue: { fontFamily: typography.bodyBold, fontSize: 16, color: colors.primary },
-  msg: { color: colors.danger, marginTop: 8, fontSize: typography.small },
-  footer: {
-    padding: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
+  optionText: { fontSize: typography.body, color: colors.text },
+  error: { color: colors.danger, marginBottom: 8, fontSize: typography.small },
+  verifyBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 4,
   },
+  verifyDone: { backgroundColor: colors.success },
+  verifyText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.body },
+  cartHint: {
+    textAlign: "center",
+    color: colors.textMuted,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    fontSize: typography.small,
+  },
+  continueBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  continueOff: { opacity: 0.45 },
+  continueText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.body },
 });

@@ -1,6 +1,4 @@
 // Shared helpers for the create-payment / verify-payment Edge Functions.
-// Runs on Supabase's servers (Deno) — never shipped to the app.
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export const corsHeaders = {
@@ -11,9 +9,6 @@ export const corsHeaders = {
 const LIPILA_BASE_URL = Deno.env.get("LIPILA_BASE_URL") || "https://blz.lipila.io/api/v1";
 const LIPILA_SECRET_KEY = Deno.env.get("LIPILA_SECRET_KEY") || "";
 
-/** Service-role client — bypasses RLS, only ever used here on the server,
- * after we've confirmed who the caller is. Never expose this key/client
- * to the app. */
 export function serviceClient() {
   return createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -21,8 +16,6 @@ export function serviceClient() {
   );
 }
 
-/** Verify the request's bearer token belongs to a real signed-in user and
- * return their user id, or null if the token is missing/invalid. */
 export async function requireUser(req: Request): Promise<string | null> {
   const auth = req.headers.get("Authorization") || "";
   const token = auth.replace(/^Bearer\s+/i, "");
@@ -38,14 +31,37 @@ export async function requireUser(req: Request): Promise<string | null> {
   return data.user.id;
 }
 
-/** Load an order and confirm this user is allowed to act on it (they placed
- * it, or they administer the shop it belongs to). Uses the service client
- * so it can check regardless of RLS, but the permission check itself
- * happens right here in code. */
-export async function loadOwnedOrder(db: ReturnType<typeof serviceClient>, orderId: string, userId: string) {
+/** Load order group owned by this customer. */
+export async function loadOwnedGroup(
+  db: ReturnType<typeof serviceClient>,
+  groupId: string,
+  userId: string
+) {
+  const { data: group, error } = await db
+    .from("order_groups")
+    .select("id, customer_id, total, payment_status")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (error || !group) return null;
+  if (group.customer_id === userId) return group;
+  if (await isPlatformAdmin(db, userId)) return group;
+  return null;
+}
+
+async function isPlatformAdmin(db: ReturnType<typeof serviceClient>, userId: string) {
+  const { data } = await db.from("platform_admins").select("user_id").eq("user_id", userId).maybeSingle();
+  return !!data;
+}
+
+/** @deprecated single-order path — kept for older clients */
+export async function loadOwnedOrder(
+  db: ReturnType<typeof serviceClient>,
+  orderId: string,
+  userId: string
+) {
   const { data: order, error } = await db
     .from("orders")
-    .select("id, shop_id, customer_id, total, payment_status")
+    .select("id, shop_id, customer_id, total, payment_status, group_id")
     .eq("id", orderId)
     .maybeSingle();
   if (error || !order) return null;
@@ -58,7 +74,6 @@ export async function loadOwnedOrder(db: ReturnType<typeof serviceClient>, order
     .eq("shop_id", order.shop_id)
     .maybeSingle();
   if (shopAdmin) return order;
-
   return null;
 }
 

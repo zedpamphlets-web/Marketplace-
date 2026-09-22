@@ -172,3 +172,142 @@ create policy "banner_products_auth_delete" on public.banner_products
   using (true);
 
 alter table public.shops add column if not exists whatsapp_number text;
+
+-- Order groups (multi-shop checkout + single payment)
+create table if not exists public.order_groups (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid references auth.users(id) on delete set null,
+  total numeric not null default 0,
+  payment_status text default 'pending',
+  payment_method text,
+  delivery_address jsonb,
+  created_at timestamptz default now()
+);
+
+alter table public.orders add column if not exists group_id uuid references public.order_groups(id) on delete set null;
+alter table public.orders add column if not exists shop_confirmed boolean default false;
+
+alter table public.order_groups enable row level security;
+
+drop policy if exists "order_groups_owner_read" on public.order_groups;
+create policy "order_groups_owner_read" on public.order_groups
+  for select to authenticated
+  using (customer_id = auth.uid() or public.is_platform_admin());
+
+-- Grouped order RPC: one payment group, one order per shop
+create or replace function public.create_grouped_order(
+  p_items jsonb,
+  p_full_name text,
+  p_phone text,
+  p_location text,
+  p_payment_method text
+)
+returns table (group_id uuid, total numeric)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_group_id uuid;
+  v_delivery numeric := 50;
+  v_subtotal numeric := 0;
+  v_shop uuid;
+  v_order_id uuid;
+  v_shop_total numeric;
+  v_fee numeric;
+begin
+  if v_uid is null then
+    raise exception 'Not signed in';
+  end if;
+
+  select coalesce(delivery_fee_local, 50) into v_delivery
+  from public.settings where id = 'global';
+  v_delivery := coalesce(v_delivery, 50);
+
+  insert into public.order_groups (customer_id, payment_status, payment_method, delivery_address)
+  values (
+    v_uid,
+    'pending',
+    p_payment_method,
+    jsonb_build_object(
+      'full_name', p_full_name,
+      'phone', p_phone,
+      'location', p_location
+    )
+  )
+  returning id into v_group_id;
+
+  for v_shop in
+    select distinct (elem->>'shop_id')::uuid
+    from jsonb_array_elements(p_items) as elem
+    where (elem->>'shop_id') is not null
+  loop
+    select coalesce(sum(
+      greatest((elem->>'qty')::int, 1) *
+      (select price from public.products where id = (elem->>'product_id')::uuid)
+    ), 0)
+    into v_shop_total
+    from jsonb_array_elements(p_items) as elem
+    where (elem->>'shop_id')::uuid = v_shop;
+
+    v_fee := v_delivery;
+    v_subtotal := v_subtotal + v_shop_total + v_fee;
+
+    insert into public.orders (
+      shop_id, customer_id, total, status, payment_status, delivery_address, group_id, shop_confirmed
+    )
+    values (
+      v_shop,
+      v_uid,
+      v_shop_total + v_fee,
+      'new',
+      'pending',
+      jsonb_build_object(
+        'full_name', p_full_name,
+        'phone', p_phone,
+        'location', p_location
+      ),
+      v_group_id,
+      false
+    )
+    returning id into v_order_id;
+
+    insert into public.order_items (order_id, product_id, quantity, price_at_purchase)
+    select
+      v_order_id,
+      (elem->>'product_id')::uuid,
+      greatest((elem->>'qty')::int, 1),
+      (select price from public.products where id = (elem->>'product_id')::uuid)
+    from jsonb_array_elements(p_items) as elem
+    where (elem->>'shop_id')::uuid = v_shop;
+  end loop;
+
+  update public.order_groups set total = v_subtotal where id = v_group_id;
+
+  return query select v_group_id, v_subtotal;
+end;
+$$;
+
+-- Staff may delete unpaid orders (and their items via cascade if set, else app deletes items first)
+drop policy if exists "orders_staff_delete" on public.orders;
+create policy "orders_staff_delete" on public.orders
+  for delete to authenticated
+  using (
+    (public.is_shop_admin(shop_id) or public.is_platform_admin())
+    and coalesce(payment_status, 'pending') in ('pending', 'unpaid', 'failed')
+  );
+
+drop policy if exists "order_items_staff_delete" on public.order_items;
+create policy "order_items_staff_delete" on public.order_items
+  for delete to authenticated
+  using (
+    exists (
+      select 1 from public.orders o
+      where o.id = order_items.order_id
+        and (public.is_shop_admin(o.shop_id) or public.is_platform_admin())
+        and coalesce(o.payment_status, 'pending') in ('pending', 'unpaid', 'failed')
+    )
+  );
+
+alter table public.shops add column if not exists whatsapp_number text;

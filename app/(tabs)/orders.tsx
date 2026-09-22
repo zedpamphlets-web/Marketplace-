@@ -20,6 +20,7 @@ type OrderRow = {
   status: string;
   payment_status: string | null;
   total: number;
+  group_id?: string | null;
   shop_name?: string;
   order_items?: OrderItem[];
 };
@@ -40,7 +41,7 @@ export default function OrdersScreen() {
         }
         const { data } = await supabase
           .from("orders")
-          .select("id, shop_id, status, payment_status, total, order_items(quantity, price_at_purchase, products(name, image_url))")
+          .select("id, shop_id, status, payment_status, total, group_id, order_items(quantity, price_at_purchase, products(name, image_url))")
           .eq("customer_id", auth.user.id)
           .order("created_at", { ascending: false });
         const rows = (data as any[]) ?? [];
@@ -122,6 +123,9 @@ export default function OrdersScreen() {
               <Text style={styles.orderId}>
                 #{item.id.slice(0, 8)} · {item.shop_name || "Shop"}
               </Text>
+              {item.group_id ? (
+                <Text style={styles.groupNote}>Part of a multi-shop order</Text>
+              ) : null}
               <Text style={styles.orderSub}>
                 K {Number(item.total).toLocaleString("en-ZM", { maximumFractionDigits: 0 })}
               </Text>
@@ -197,6 +201,7 @@ const styles = StyleSheet.create({
   },
   orderId: { fontSize: typography.body, fontFamily: typography.bodyBold, color: colors.text, marginBottom: 3 },
   orderSub: { fontSize: typography.small, color: colors.textMuted, marginBottom: 8 },
+  groupNote: { fontSize: typography.tiny, color: colors.primary, marginBottom: 4, fontFamily: typography.bodyMedium },
   pills: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
   chev: { fontSize: 22, color: colors.textFaint, marginLeft: 8 },
   itemsBox: { marginTop: 10, gap: 6 },
