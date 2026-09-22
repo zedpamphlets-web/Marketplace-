@@ -20,6 +20,9 @@ export async function startLipilaPayment(opts: {
   groupId: string;
   phone: string;
 }) {
+  if (!CREATE_PAYMENT_URL) {
+    throw new Error("Payment API URL is not configured.");
+  }
   const headers = await authHeaders();
   const res = await fetch(CREATE_PAYMENT_URL, {
     method: "POST",
