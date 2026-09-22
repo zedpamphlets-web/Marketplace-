@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Marketplace",
-    "slug": "victor08",
-    "owner": "webteys-team",
+    "slug": "apptech2008",
+    "owner": "apptech2008",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -61,11 +61,11 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "513a8064-14d4-41ea-af65-8c9c1a461646"
+        "projectId": "4f4ef67d-d436-4165-839d-ea090ac1d66e"
       },
       "supabaseUrl": "",
       "supabaseAnonKey": "",
       "paymentApiUrl": ""
     }
   }
-        }
+}
