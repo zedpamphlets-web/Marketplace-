@@ -136,24 +136,27 @@ export default function PaymentScreen() {
       const { data, error } = await supabase
         .rpc("create_grouped_order", {
           p_items: items,
-          p_full_name: auth.user.user_metadata?.full_name || auth.user.email || "Customer",
-          p_phone: deliveryPhone || mmPhone,
-          p_location: locWithNote,
+          p_full_name: delivery.fullName,
+          p_phone: delivery.phone,
+          p_location: delivery.location,
           p_payment_method: provider,
         })
         .single();
+      if (error) {
+        throw new Error(`Create order failed: ${error.message}`);
+      }
+      const groupId = (data as any)?.group_id as string;
+      if (!groupId) throw new Error("Could not create order group (no group_id returned).");
 
-      if (error || !data) throw new Error(error?.message || "Could not create order.");
-
-      const gid = (data as any).group_id as string;
-      setGroupId(gid);
-      await writeCart([]);
-
-      await startLipilaPayment({
-        provider,
-        groupId: gid,
-        phone: mmPhone.replace(/\D/g, "").length >= 9 ? mmPhone : deliveryPhone,
-      });
+      try {
+        await startLipilaPayment({
+          provider,
+          groupId,
+          phone: mmPhone.trim(),
+        });
+      } catch (payErr: any) {
+        throw new Error(`Payment server: ${payErr?.message || "failed"}`);
+      }
 
       startPolling(gid);
     } catch (e: any) {

@@ -6,7 +6,8 @@ import { toZambianMsisdn } from "@/lib/lipila";
 async function authHeaders() {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
-  if (!token) throw new Error("Not signed in.");
+  if (!token) throw new Error("Not signed in. Open Me and sign in, then try again.");
+  if (!SUPABASE_ANON_KEY) throw new Error("Supabase key missing in this build.");
   return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
@@ -21,21 +22,41 @@ export async function startLipilaPayment(opts: {
   phone: string;
 }) {
   if (!CREATE_PAYMENT_URL) {
-    throw new Error("Payment API URL is not configured.");
+    throw new Error("Payment API URL is not configured in this build.");
   }
+
   const headers = await authHeaders();
-  const res = await fetch(CREATE_PAYMENT_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      provider: opts.provider,
-      groupId: opts.groupId,
-      phone: toZambianMsisdn(opts.phone),
-    }),
-  });
-  const body = await res.json().catch(() => ({}));
+
+  let res: Response;
+  try {
+    res = await fetch(CREATE_PAYMENT_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        provider: opts.provider,
+        groupId: opts.groupId,
+        phone: toZambianMsisdn(opts.phone),
+      }),
+    });
+  } catch (e: any) {
+    const msg = e?.message || "Network request failed";
+    throw new Error(
+      `${msg}. Could not reach ${CREATE_PAYMENT_URL}. Check internet and that create-payment is deployed.`
+    );
+  }
+
+  const text = await res.text();
+  let body: any = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { error: text || `HTTP ${res.status}` };
+  }
+
   if (!res.ok) {
-    throw new Error(body?.error || `Payment start failed (${res.status})`);
+    throw new Error(
+      body?.error || body?.message || `Payment start failed (HTTP ${res.status})`
+    );
   }
   return body;
 }
@@ -47,6 +68,9 @@ export async function verifyLipilaPayment(groupId: string): Promise<{
   error?: string;
 }> {
   try {
+    if (!VERIFY_PAYMENT_URL) {
+      return { status: "pending", error: "Verify URL missing" };
+    }
     const headers = await authHeaders();
     const res = await fetch(VERIFY_PAYMENT_URL, {
       method: "POST",
