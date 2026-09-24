@@ -169,37 +169,19 @@ export default function CategoriesScreen() {
         <ScrollView style={styles.main} contentContainerStyle={styles.mainContent} showsVerticalScrollIndicator={false}>
           {showBrowse ? (
             <>
-              <View style={styles.localBanner}>
-                <Image
-                  source={require("../../assets/promo-local-stock.jpg")}
-                  style={styles.localImg}
-                  contentFit="cover"
-                />
-                <View style={styles.localCopy}>
-                  <Text style={styles.localTitle}>local stock</Text>
-                  <Text style={styles.localLine}>✓ Fastest delivery in 5 days</Text>
-                  <Text style={styles.localLine}>✓ No import charges</Text>
-                </View>
-              </View>
-
-              <Text style={styles.section}>Recommendations</Text>
+              <Text style={styles.section}>Categories</Text>
               {loading && categories.length === 0 ? (
                 <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
               ) : (
                 <View style={styles.circleGrid}>
-                  {categories.map((c, i) => (
+                  {categories.map((c) => (
                     <Pressable key={c.id} style={styles.circleItem} onPress={() => select(c)}>
                       <View style={styles.circle}>
                         {c.icon_url ? (
                           <Image source={{ uri: c.icon_url }} style={styles.circleImg} contentFit="cover" />
-                        ) : i === 0 ? (
-                          <View style={styles.hotCircle}>
-                            <Text style={styles.hotText}>HOT</Text>
-                          </View>
                         ) : (
                           <Text style={styles.circleEmoji}>{emojiForCategory(c.icon, c.icon_url)}</Text>
                         )}
-                        {i % 4 === 2 ? <Text style={styles.fire}>🔥</Text> : null}
                       </View>
                       <Text style={styles.circleName} numberOfLines={2}>
                         {shortName(c.name)}
@@ -209,20 +191,9 @@ export default function CategoriesScreen() {
                 </View>
               )}
 
-              <View style={styles.miniPromos}>
-                <View style={styles.miniPromo}>
-                  <Text style={styles.miniPromoTitle}>Free shipping</Text>
-                  <Text style={styles.miniPromoSub}>First order</Text>
-                </View>
-                <View style={[styles.miniPromo, styles.miniPromoAlt]}>
-                  <Text style={styles.miniPromoTitle}>Order protection</Text>
-                  <Text style={styles.miniPromoSub}>Pay to delivery</Text>
-                </View>
-              </View>
-
               {banners.length > 0 ? (
                 <>
-                  <Text style={styles.section}>Curated products</Text>
+                  <Text style={styles.section}>Promotions</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
                     {banners.map((b) => (
                       <Pressable key={b.id} style={styles.curated}>
@@ -235,9 +206,11 @@ export default function CategoriesScreen() {
                             </Text>
                           </View>
                         )}
-                        <Text style={styles.curatedCap} numberOfLines={2}>
-                          {b.title || "Featured"}
-                        </Text>
+                        {b.title ? (
+                          <Text style={styles.curatedCap} numberOfLines={2}>
+                            {b.title}
+                          </Text>
+                        ) : null}
                       </Pressable>
                     ))}
                   </ScrollView>

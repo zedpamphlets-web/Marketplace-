@@ -224,19 +224,21 @@ export default function HomeScreen() {
     if (nearBottom) loadMore();
   };
 
-  const promoTitle = banners[0]?.title || "Up to 20% off";
-  const promoSub = banners[0]?.subtitle || "Deals on trusted local shops";
+  const promoTitle = banners[0]?.title || "";
+  const promoSub = banners[0]?.subtitle || "";
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
       <AppMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
-      <View style={styles.promoBar}>
-        <Text style={styles.promoKicker}>ShopTrory</Text>
-        <Text style={styles.promoTitle} numberOfLines={1}>
-          {promoTitle} · {promoSub}
-        </Text>
-      </View>
+      {promoTitle || promoSub ? (
+        <View style={styles.promoBar}>
+          <Text style={styles.promoKicker}>ShopTrory</Text>
+          <Text style={styles.promoTitle} numberOfLines={1}>
+            {[promoTitle, promoSub].filter(Boolean).join(" · ")}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.topBar}>
         <Pressable onPress={() => setMenuOpen(true)} hitSlop={10} style={styles.iconBtn}>
@@ -321,17 +323,6 @@ export default function HomeScreen() {
             ))}
           </ScrollView>
         ) : null}
-
-        <View style={styles.promoBoxes}>
-          <View style={styles.promoBox}>
-            <Text style={styles.promoBoxTitle}>Free shipping</Text>
-            <Text style={styles.promoBoxSub}>on your first order</Text>
-          </View>
-          <View style={[styles.promoBox, styles.promoBoxAlt]}>
-            <Text style={styles.promoBoxTitle}>Order protection</Text>
-            <Text style={styles.promoBoxSub}>from payment to delivery</Text>
-          </View>
-        </View>
 
         {banners.length > 0 ? (
           <View style={styles.bannerBlock}>

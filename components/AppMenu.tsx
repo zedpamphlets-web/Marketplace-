@@ -14,6 +14,7 @@ import Svg, { Path, Circle, Rect, Line } from "react-native-svg";
 import { BagLogo, ShopTroryWordmark } from "@/components/BrandMark";
 import { useUserRole, type UserRole } from "@/lib/useUserRole";
 import { supabase } from "@/lib/supabase";
+import { colors, spacing, typography } from "@/lib/theme";
 
 const MENU_WIDTH = Math.min(320, Dimensions.get("window").width * 0.85);
 

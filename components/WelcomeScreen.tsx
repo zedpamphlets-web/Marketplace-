@@ -39,12 +39,7 @@ function SplashOne({ onNext }: { onNext: () => void }) {
           <Text style={styles.tag}>Shop Smarter  ·  Live Better</Text>
         </View>
 
-        <View style={styles.copy}>
-          <Text style={styles.h1}>
-            Everything You{"\n"}Need in <Text style={styles.h1Gold}>One Place</Text>
-          </Text>
-          <Text style={styles.sub}>Great products, amazing deals,{"\n"}and trusted local shops.</Text>
-        </View>
+        <View style={styles.copy} />
 
         <View style={styles.heroWrap}>
           <View style={styles.podium} />
