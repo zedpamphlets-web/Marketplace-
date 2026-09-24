@@ -45,7 +45,7 @@ export function PrimaryButton({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color="#fff" />
+        <ActivityIndicator color={colors.onPrimary} />
       ) : (
         <Text style={styles.btnText}>{label}</Text>
       )}
@@ -111,11 +111,11 @@ const styles = StyleSheet.create({
   sectionAction: {
     fontSize: typography.small,
     fontFamily: typography.bodySemibold,
-    color: colors.primary,
+    color: colors.primaryDark,
   },
   btn: {
     backgroundColor: colors.primary,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   btnText: {
-    color: "#fff",
+    color: colors.onPrimary,
     fontSize: typography.body,
     fontFamily: typography.bodyBold,
     letterSpacing: 0.2,

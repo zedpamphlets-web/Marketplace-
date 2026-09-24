@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   addBtnPressed: { backgroundColor: colors.primaryDark },
-  addBtnText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.body },
+  addBtnText: { color: colors.onPrimary, fontFamily: typography.bodyBold, fontSize: typography.body },
   similarBlock: { padding: spacing.lg, paddingTop: spacing.xl },
   similarTitle: {
     fontFamily: typography.displaySemibold,
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: "center",
   },
-  buyBtnText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.body },
+  buyBtnText: { color: colors.onPrimary, fontFamily: typography.bodyBold, fontSize: typography.body },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(15,23,42,0.45)",

@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   verifyDone: { backgroundColor: colors.success },
-  verifyText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.body },
+  verifyText: { color: colors.onPrimary, fontFamily: typography.bodyBold, fontSize: typography.body },
   cartHint: {
     textAlign: "center",
     color: colors.textMuted,
@@ -402,5 +402,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   continueOff: { opacity: 0.45 },
-  continueText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.body },
+  continueText: { color: colors.onPrimary, fontFamily: typography.bodyBold, fontSize: typography.body },
 });

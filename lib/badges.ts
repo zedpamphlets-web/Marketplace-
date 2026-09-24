@@ -19,14 +19,14 @@ export type ProductBadge = {
 };
 
 export const PRODUCT_BADGES: ProductBadge[] = [
-  { id: "verified", label: "Verified", icon: "✓", bg: "#2563EB", fg: "#FFFFFF" },
+  { id: "verified", label: "Verified", icon: "✓", bg: "#F5B400", fg: "#111111" },
   { id: "top_seller", label: "Top Seller", icon: "♛", bg: "#F59E0B", fg: "#FFFFFF" },
   { id: "popular", label: "Popular", icon: "🔥", bg: "#EF4444", fg: "#FFFFFF" },
   { id: "new", label: "New", icon: "✦", bg: "#16A34A", fg: "#FFFFFF" },
   { id: "best_price", label: "Best Price", icon: "🏷", bg: "#7C3AED", fg: "#FFFFFF" },
   { id: "sale", label: "Sale", icon: "%", bg: "#DC2626", fg: "#FFFFFF" },
   { id: "limited", label: "Limited", icon: "⏱", bg: "#334155", fg: "#FFFFFF" },
-  { id: "fast_delivery", label: "Fast Delivery", icon: "🚚", bg: "#2563EB", fg: "#FFFFFF" },
+  { id: "fast_delivery", label: "Fast Delivery", icon: "🚚", bg: "#F5B400", fg: "#111111" },
   { id: "trusted_shop", label: "Trusted Shop", icon: "🛡", bg: "#F59E0B", fg: "#111827" },
   { id: "live", label: "LIVE", icon: "●", bg: "#EF4444", fg: "#FFFFFF" },
 ];

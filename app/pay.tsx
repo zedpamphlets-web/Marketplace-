@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   },
   providerOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   providerText: { fontSize: typography.small, color: colors.textMuted, fontFamily: typography.bodySemibold },
-  providerTextOn: { color: "#fff" },
+  providerTextOn: { color: colors.onPrimary },
   locPreview: { color: colors.textMuted, fontSize: typography.tiny, marginTop: 12 },
   error: { color: colors.danger, marginTop: 8, fontSize: typography.small },
   payBtn: {
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: spacing.lg,
   },
-  payBtnText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.body },
+  payBtnText: { color: colors.onPrimary, fontFamily: typography.bodyBold, fontSize: typography.body },
   confirmTitle: {
     marginTop: spacing.lg,
     fontFamily: typography.displaySemibold,
@@ -432,6 +432,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     marginBottom: 12,
   },
-  primaryBtnText: { color: "#fff", fontFamily: typography.bodyBold },
+  primaryBtnText: { color: colors.onPrimary, fontFamily: typography.bodyBold },
   link: { color: colors.primary, fontFamily: typography.bodySemibold },
 });

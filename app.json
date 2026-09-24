@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Marketplace",
+    "name": "ShopTrory",
     "slug": "apptech2008",
     "owner": "apptech2008",
     "version": "1.0.0",
@@ -15,7 +15,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#2563EB"
+      "backgroundColor": "#F5B400"
     },
     "runtimeVersion": {
       "policy": "appVersion"
@@ -30,7 +30,7 @@
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#2563EB"
+        "backgroundColor": "#F5B400"
       }
     },
     "plugins": [
@@ -48,13 +48,13 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#2563EB"
+          "color": "#F5B400"
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Marketplace to access your photos for category and product images."
+          "photosPermission": "Allow ShopTrory to access your photos for category and product images."
         }
       ]
     ],

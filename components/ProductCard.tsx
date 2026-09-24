@@ -18,6 +18,7 @@ export type ProductCardData = {
   sold_count?: number | null;
   shop_name?: string | null;
   badges?: string[] | null;
+  original_price?: number | null;
 };
 
 type Props = {
@@ -26,7 +27,7 @@ type Props = {
   onAddToCart?: (product: ProductCardData) => void;
 };
 
-function CartIcon({ size = 16, color = "#fff" }: { size?: number; color?: string }) {
+function CartIcon({ size = 16, color = colors.onPrimary }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <Circle cx="9" cy="20" r="1.4" />
@@ -36,8 +37,18 @@ function CartIcon({ size = 16, color = "#fff" }: { size?: number; color?: string
   );
 }
 
+function formatSold(n: number) {
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K+`;
+  return `${n}`;
+}
+
 export function ProductCard({ product, variant = "home", onAddToCart }: Props) {
   const isShop = variant === "shop";
+  const orig = product.original_price != null ? Number(product.original_price) : null;
+  const price = Number(product.price);
+  const discount =
+    orig != null && orig > price ? Math.round(((orig - price) / orig) * 100) : product.is_deal ? 10 : 0;
+  const verified = (product.badges || []).some((b) => String(b).toLowerCase().includes("verified"));
 
   const handlePress = () => {
     router.push(`/product/${product.id}`);
@@ -47,8 +58,6 @@ export function ProductCard({ product, variant = "home", onAddToCart }: Props) {
     e?.stopPropagation?.();
     onAddToCart?.(product);
   };
-
-  const rating = product.rating != null ? product.rating : 4.7;
 
   return (
     <Pressable
@@ -65,55 +74,62 @@ export function ProductCard({ product, variant = "home", onAddToCart }: Props) {
         )}
 
         <View style={styles.badgeOverlay}>
+          {product.is_deal ? (
+            <View style={styles.superPill}>
+              <Text style={styles.superText}>Super</Text>
+            </View>
+          ) : null}
           <ProductBadgeRow ids={product.badges} />
         </View>
 
-        <Pressable onPress={handleAdd} style={styles.cartIconBtn} hitSlop={8}>
-          <CartIcon size={17} color={colors.primary} />
-        </Pressable>
+        <View style={styles.cam}>
+          <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth={2}>
+            <Path d="M4 8h3l2-2h6l2 2h3v11H4V8z" />
+            <Circle cx="12" cy="13" r="3.2" />
+          </Svg>
+        </View>
       </View>
 
       <View style={styles.body}>
-        <View style={styles.ratingRow}>
-          <Text style={styles.star}>★</Text>
-          <Text style={styles.rating}>{rating.toFixed(1)}</Text>
-          {product.shop_name ? (
-            <Text style={styles.shopMini} numberOfLines={1}>
-              {product.shop_name}
-            </Text>
-          ) : null}
-        </View>
-
         <Text style={styles.name} numberOfLines={2}>
           {product.name}
         </Text>
 
         <View style={styles.priceRow}>
           <Text style={styles.price}>
-            K{Number(product.price).toLocaleString("en-ZM", { maximumFractionDigits: 0 })}
+            K{price.toLocaleString("en-ZM", { maximumFractionDigits: 0 })}
           </Text>
-          {product.sold_count != null && product.sold_count > 0 ? (
-            <Text style={styles.sold}>{formatSold(product.sold_count)} sold</Text>
+          {discount > 0 ? (
+            <Text style={styles.off}>↓ {discount}% off</Text>
           ) : null}
         </View>
+
+        <Text style={styles.metaLine} numberOfLines={1}>
+          MOQ: 1
+          {verified ? "   Verified" : ""}
+          {product.shop_name ? ` · ${product.shop_name}` : ""}
+        </Text>
+
+        {product.sold_count != null && product.sold_count > 0 ? (
+          <Text style={styles.sold}>{formatSold(product.sold_count)} sold</Text>
+        ) : null}
+
+        {product.is_deal || discount >= 10 ? (
+          <Text style={styles.lowest}>↓ 180-day lowest prices</Text>
+        ) : null}
 
         {isShop ? (
           <Pressable
             onPress={handleAdd}
             style={({ pressed }) => [styles.addBtn, pressed && styles.addBtnPressed]}
           >
-            <CartIcon size={14} color="#fff" />
+            <CartIcon size={14} color={colors.onPrimary} />
             <Text style={styles.addBtnText}>Add to Cart</Text>
           </Pressable>
         ) : null}
       </View>
     </Pressable>
   );
-}
-
-function formatSold(n: number) {
-  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K+`;
-  return `${n}+`;
 }
 
 const styles = StyleSheet.create({
@@ -123,11 +139,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     overflow: "hidden",
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   cardPressed: { opacity: 0.92 },
   imageWrap: {
     aspectRatio: 1,
-    backgroundColor: "#F1F5F9",
+    backgroundColor: "#F6F3EA",
     position: "relative",
   },
   image: { width: "100%", height: "100%" },
@@ -145,26 +163,33 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 6,
     left: 6,
-    right: 40,
+    right: 28,
+    gap: 4,
   },
-  cartIconBtn: {
+  superPill: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
+  superText: {
+    color: colors.onPrimary,
+    fontSize: 10,
+    fontFamily: typography.bodyBold,
+  },
+  cam: {
     position: "absolute",
-    bottom: 8,
-    right: 8,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "#fff",
+    left: 6,
+    bottom: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    backgroundColor: "rgba(255,255,255,0.92)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  body: { padding: 10 },
-  ratingRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 3 },
-  star: { color: "#F59E0B", fontSize: 13 },
-  rating: { fontSize: 13, fontFamily: typography.bodySemibold, color: colors.text },
-  shopMini: { flex: 1, fontSize: 11, color: colors.textFaint, marginLeft: 4 },
+  body: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 10 },
   name: {
     fontSize: 13,
     fontFamily: typography.bodyMedium,
@@ -173,13 +198,26 @@ const styles = StyleSheet.create({
     minHeight: 34,
     marginBottom: 4,
   },
-  priceRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+  priceRow: { flexDirection: "row", alignItems: "baseline", gap: 6, flexWrap: "wrap" },
   price: {
     fontSize: 16,
     fontFamily: typography.bodyBold,
-    color: "#EA580C",
+    color: colors.text,
   },
-  sold: { fontSize: 11, color: colors.textMuted, fontFamily: typography.bodyMedium },
+  off: { fontSize: 11, color: "#DC2626", fontFamily: typography.bodySemibold },
+  metaLine: {
+    marginTop: 3,
+    fontSize: 11,
+    color: colors.textMuted,
+    fontFamily: typography.bodyMedium,
+  },
+  sold: { marginTop: 2, fontSize: 11, color: colors.textMuted },
+  lowest: {
+    marginTop: 3,
+    fontSize: 11,
+    color: "#DC2626",
+    fontFamily: typography.bodyMedium,
+  },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -191,5 +229,5 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   addBtnPressed: { backgroundColor: colors.primaryDark },
-  addBtnText: { color: "#fff", fontSize: typography.small, fontFamily: typography.bodySemibold },
+  addBtnText: { color: colors.onPrimary, fontSize: typography.small, fontFamily: typography.bodySemibold },
 });

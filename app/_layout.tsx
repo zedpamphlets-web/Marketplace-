@@ -6,6 +6,8 @@ import { useFonts, Sora_600SemiBold, Sora_700Bold } from "@expo-google-fonts/sor
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
 import { StatusBar } from "expo-status-bar";
 import { useOnline } from "@/components/OfflineScreen";
+import WelcomeScreen from "@/components/WelcomeScreen";
+import { colors } from "@/lib/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* ignore if already hidden */
@@ -22,6 +24,7 @@ export default function RootLayout() {
   });
 
   const [ready, setReady] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
   const net = useOnline();
 
   useEffect(() => {
@@ -44,17 +47,25 @@ export default function RootLayout() {
   }, [ready, fontsLoaded, fontError]);
 
   if (!ready || (!fontsLoaded && !fontError)) {
-    // Render nothing — splash screen is still showing natively.
     return null;
+  }
+
+  if (showWelcome) {
+    return (
+      <View style={{ flex: 1 }}>
+        <StatusBar style="dark" />
+        <WelcomeScreen onDone={() => setShowWelcome(false)} />
+      </View>
+    );
   }
 
   return (
     <View style={{ flex: 1 }}>
       <StatusBar style="dark" />
       {!net.online ? (
-        <View style={{ backgroundColor: "#FEF3C7", paddingVertical: 8, paddingHorizontal: 16 }}>
-          <Text style={{ color: "#92400E", textAlign: "center", fontSize: 12 }}>
-            Offline — showing cached home data when available
+        <View style={{ backgroundColor: colors.primaryMuted, paddingVertical: 8, paddingHorizontal: 16 }}>
+          <Text style={{ color: "#7A5608", textAlign: "center", fontSize: 12 }}>
+            Offline — banners and shops stay available
           </Text>
         </View>
       ) : null}

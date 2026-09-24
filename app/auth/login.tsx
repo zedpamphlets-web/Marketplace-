@@ -33,7 +33,7 @@ export default function AuthLanding() {
       <View style={styles.hero}>
         <SafeAreaView edges={["top"]}>
           <View style={styles.heroTop}>
-            <Text style={styles.brand}>Marketplace</Text>
+            <Text style={styles.brand}>ShopTrory</Text>
             <Pressable onPress={() => router.back()} hitSlop={12}>
               <Text style={styles.close}>✕</Text>
             </Pressable>
@@ -110,13 +110,13 @@ export default function AuthLanding() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#fff" },
-  hero: { backgroundColor: colors.accent, paddingHorizontal: 20, paddingBottom: 8 },
+  hero: { backgroundColor: colors.primary, paddingHorizontal: 20, paddingBottom: 8 },
   heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  brand: { color: "#fff", fontSize: 22, fontFamily: typography.displayFont },
-  close: { color: "#fff", fontSize: 22 },
-  kicker: { color: "rgba(255,255,255,0.88)", marginTop: 28, textAlign: "center", fontSize: 14 },
+  brand: { color: colors.onPrimary, fontSize: 22, fontFamily: typography.displayFont },
+  close: { color: colors.onPrimary, fontSize: 22 },
+  kicker: { color: "rgba(17,17,17,0.72)", marginTop: 28, textAlign: "center", fontSize: 14 },
   heroTitle: {
-    color: "#fff",
+    color: colors.onPrimary,
     fontSize: 26,
     fontFamily: typography.displayFont,
     textAlign: "center",

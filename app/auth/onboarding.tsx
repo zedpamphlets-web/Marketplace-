@@ -207,5 +207,5 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   nextOff: { opacity: 0.45 },
-  nextText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: 16 },
+  nextText: { color: colors.onPrimary, fontFamily: typography.bodyBold, fontSize: 16 },
 });

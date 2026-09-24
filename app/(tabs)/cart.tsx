@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   barTotal: { marginLeft: "auto", fontFamily: typography.bodyBold },
   checkout: { backgroundColor: colors.accent, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 20 },
   checkoutOff: { opacity: 0.45 },
-  checkoutText: { color: "#fff", fontFamily: typography.bodyBold },
+  checkoutText: { color: colors.onPrimary, fontFamily: typography.bodyBold },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" },
   sheet: { maxHeight: "80%", backgroundColor: "#fff", borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingHorizontal: 16, paddingTop: 12 },
   sheetTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },

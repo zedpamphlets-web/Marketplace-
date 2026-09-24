@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Svg, { Path, Circle, Rect, Line } from "react-native-svg";
-import { colors, spacing, radius, typography } from "@/lib/theme";
+import { BagLogo, ShopTroryWordmark } from "@/components/BrandMark";
 import { useUserRole, type UserRole } from "@/lib/useUserRole";
 import { supabase } from "@/lib/supabase";
 
@@ -368,10 +368,11 @@ export function AppMenu({ visible, onClose }: Props) {
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.logoRow}>
-              <View style={styles.logoBox}>
-                <Text style={styles.logoLetter}>M</Text>
+              <BagLogo size={32} />
+              <View>
+                <ShopTroryWordmark size={18} />
+                <Text style={styles.headerTitle}>{title}</Text>
               </View>
-              <Text style={styles.headerTitle}>{title}</Text>
             </View>
             <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
               <Icon name="close" color={colors.textMuted} />
@@ -447,23 +448,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  logoBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoLetter: {
-    color: "#fff",
-    fontSize: 16,
-    fontFamily: typography.displayFont,
-  },
   headerTitle: {
-    fontSize: typography.h3,
-    fontFamily: typography.displaySemibold,
-    color: colors.text,
+    fontSize: 12,
+    fontFamily: typography.bodyMedium,
+    color: colors.textMuted,
+    marginTop: 1,
   },
   closeBtn: {
     width: 32,

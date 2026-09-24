@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   initials: {
-    color: "#fff",
+    color: colors.onPrimary,
     fontSize: 22,
     fontFamily: typography.displayFont,
     letterSpacing: 0.5,

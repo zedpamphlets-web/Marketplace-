@@ -19,25 +19,19 @@ import Svg, { Circle, Line, Path } from "react-native-svg";
 import { colors, spacing, radius, typography, shadow } from "@/lib/theme";
 import { ShopCard, type ShopCardData } from "@/components/ShopCard";
 import { ProductCard, type ProductCardData } from "@/components/ProductCard";
-import { SimpleProductCard } from "@/components/SimpleProductCard";
 import { AppMenu } from "@/components/AppMenu";
-import { SectionHeader, Skeleton } from "@/components/Shared";
+import { SectionHeader } from "@/components/Shared";
+import { BagLogo } from "@/components/BrandMark";
 import { supabase } from "@/lib/supabase";
 import { addToCart } from "@/lib/cart";
 import { useUserRole } from "@/lib/useUserRole";
 import { Image } from "expo-image";
+import { emojiForCategory } from "@/lib/categoryIcons";
+import { saveHomeShellCache, readHomeShellCache } from "@/lib/homeCache";
 import {
-  readHomeProductsCache,
-  saveHomeProductsCache,
-  readHomeShellCache,
-  saveHomeShellCache,
-} from "@/lib/homeCache";
-import {
-  mergeProductsCache,
   saveShopsCache,
   saveCategoriesCache,
   saveBannersCache,
-  readProductsCache,
   readShopsCache,
   readCategoriesCache,
   readBannersCache,
@@ -49,9 +43,8 @@ const BANNER_WIDTH = SCREEN_WIDTH - spacing.lg * 2;
 const BANNER_STEP = BANNER_WIDTH + BANNER_GAP;
 const AUTO_SWAP_MS = 4000;
 const PAGE_SIZE = 10;
-const FOR_YOU_PER_CAT = 4;
 
-function mapProduct(p: any): ProductCardData & { original_price?: number | null } {
+function mapProduct(p: any): ProductCardData {
   return {
     id: p.id,
     shop_id: p.shop_id,
@@ -67,30 +60,6 @@ function mapProduct(p: any): ProductCardData & { original_price?: number | null 
   };
 }
 
-function ProductSkeletonGrid() {
-  return (
-    <View style={styles.grid}>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <View key={i} style={styles.gridItem}>
-          <View style={styles.skelCard}>
-            <Skeleton width="100%" height={150} style={{ borderRadius: 0 }} />
-            <View style={{ padding: 8, gap: 6 }}>
-              <Skeleton width="40%" height={10} />
-              <Skeleton width="90%" height={12} />
-              <Skeleton width="55%" height={14} />
-            </View>
-          </View>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-type ForYouGroup = {
-  categoryName: string;
-  products: ProductCardData[];
-};
-
 export default function HomeScreen() {
   const role = useUserRole();
   const [search, setSearch] = useState("");
@@ -102,7 +71,6 @@ export default function HomeScreen() {
   const [banners, setBanners] = useState<
     { id: string; title: string | null; subtitle: string | null; image_url: string | null }[]
   >([]);
-  const [forYouGroups, setForYouGroups] = useState<ForYouGroup[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -126,38 +94,6 @@ export default function HomeScreen() {
     if (error) throw error;
     return (data ?? []).map(mapProduct);
   }, []);
-
-  /** Build For You groups from live categories + products (no hardcoded names). */
-  const buildForYou = useCallback(
-    async (catRows: { id: string; name: string }[], productPool: ProductCardData[]) => {
-      // Prefer categories table order; only include cats that have products
-      const groups: ForYouGroup[] = [];
-      for (const cat of catRows) {
-        const inCat = productPool
-          .filter((p) => p.category && p.category.toLowerCase() === cat.name.toLowerCase())
-          .slice(0, FOR_YOU_PER_CAT);
-        if (inCat.length > 0) {
-          groups.push({ categoryName: cat.name, products: inCat });
-        }
-      }
-      // Also surface any product categories not in the categories table
-      const known = new Set(catRows.map((c) => c.name.toLowerCase()));
-      const extra = new Map<string, ProductCardData[]>();
-      for (const p of productPool) {
-        if (!p.category) continue;
-        const key = p.category;
-        if (known.has(key.toLowerCase())) continue;
-        const list = extra.get(key) || [];
-        if (list.length < FOR_YOU_PER_CAT) list.push(p);
-        extra.set(key, list);
-      }
-      extra.forEach((prods, name) => {
-        if (prods.length) groups.push({ categoryName: name, products: prods });
-      });
-      setForYouGroups(groups);
-    },
-    []
-  );
 
   const loadShell = useCallback(async () => {
     const [{ data: shopRows }, { data: catRows }, { data: bannerRows }] = await Promise.all([
@@ -187,84 +123,42 @@ export default function HomeScreen() {
     return { shops: shopsData, categories: catsData, banners: bannersData };
   }, []);
 
+  const paintCachedShell = useCallback(async () => {
+    const cachedShell = await readHomeShellCache();
+    const shops = cachedShell?.shops?.length ? cachedShell.shops : await readShopsCache();
+    const cats = cachedShell?.categories?.length ? cachedShell.categories : await readCategoriesCache();
+    const bans = cachedShell?.banners?.length ? cachedShell.banners : await readBannersCache();
+    if (shops.length) setShops(shops);
+    if (cats.length) setCategories(cats);
+    if (bans.length) setBanners(bans);
+    return { shops, categories: cats, banners: bans };
+  }, []);
+
   const loadFirstPage = useCallback(async () => {
-    pageRef.current = 0;
-    // Offline-first: paint cache immediately if present
-    try {
-      const cachedShell = await readHomeShellCache();
-      let cachedProducts = await readHomeProductsCache();
-      if (!cachedProducts.length) cachedProducts = await readProductsCache();
-      if (cachedShell || cachedProducts.length) {
-        if (cachedShell) {
-          setShops(cachedShell.shops);
-          setCategories(cachedShell.categories);
-          setBanners(cachedShell.banners);
-          await buildForYou(cachedShell.categories, cachedProducts);
-        }
-        if (cachedProducts.length) {
-          setProducts(cachedProducts);
-          setHasMore(false);
-        }
-        setInitialLoading(false);
-      } else {
-        setInitialLoading(true);
-      }
-    } catch {
-      setInitialLoading(true);
-    }
+    // Offline: banners + shops (and category chips) only.
+    await paintCachedShell();
+    // Products always come from live data — spinner, never skeleton / cache.
+    setProducts([]);
+    setInitialLoading(true);
     try {
       const shell = await loadShell();
-      // Fetch a wider pool for For You grouping
-      const { data: poolRows } = await supabase
-        .from("products")
-        .select("id, shop_id, name, price, image_url, rating, is_deal, category, badges, sold_count, original_price")
-        .order("created_at", { ascending: false })
-        .limit(120);
-      const pool = (poolRows ?? []).map(mapProduct);
-      await mergeProductsCache(poolRows ?? []);
-      await buildForYou(shell.categories, pool);
-
+      await saveHomeShellCache(shell);
       const first = await fetchProductsPage(0);
       setProducts(first);
       setHasMore(first.length >= PAGE_SIZE);
       pageRef.current = 1;
-      await saveHomeShellCache(shell);
-      await saveHomeProductsCache(first);
-      await mergeProductsCache(first);
     } catch (e) {
       console.warn(e);
-      const cachedShell = await readHomeShellCache();
-      let cachedProducts = await readHomeProductsCache();
-      if (!cachedProducts.length) cachedProducts = await readProductsCache();
-      const shops = cachedShell?.shops?.length ? cachedShell.shops : await readShopsCache();
-      const cats = cachedShell?.categories?.length ? cachedShell.categories : await readCategoriesCache();
-      const bans = cachedShell?.banners?.length ? cachedShell.banners : await readBannersCache();
-      if (shops.length || cats.length || bans.length) {
-        setShops(shops);
-        setCategories(cats);
-        setBanners(bans);
-        await buildForYou(cats, cachedProducts);
-      } else {
-        setShops([]);
-        setCategories([]);
-        setBanners([]);
-        setForYouGroups([]);
-      }
-      if (cachedProducts.length) {
-        setProducts(cachedProducts);
-        setHasMore(false);
-      } else {
-        setProducts([]);
-        setHasMore(false);
-      }
+      setProducts([]);
+      setHasMore(false);
     } finally {
       setInitialLoading(false);
       setRefreshing(false);
     }
-  }, [fetchProductsPage, loadShell, buildForYou]);
+  }, [fetchProductsPage, loadShell, paintCachedShell]);
 
   const loadMore = useCallback(async () => {
-    if (!hasMore || loadingMoreRef.current || search.trim()) return;
+    if (!hasMore || loadingMoreRef.current || search.trim() || initialLoading) return;
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
@@ -281,7 +175,7 @@ export default function HomeScreen() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [fetchProductsPage, hasMore, search]);
+  }, [fetchProductsPage, hasMore, search, initialLoading]);
 
   useEffect(() => {
     loadFirstPage();
@@ -307,22 +201,15 @@ export default function HomeScreen() {
     }
   };
 
-  // IDs already shown in For You — hide them from the bottom Products grid
-  const forYouIds = React.useMemo(() => {
-    const s = new Set<string>();
-    forYouGroups.forEach((g) => g.products.forEach((p) => s.add(p.id)));
-    return s;
-  }, [forYouGroups]);
-
   const filtered = search.trim()
     ? products.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
-    : products.filter((p) => !forYouIds.has(p.id));
+    : products;
 
-  const onAdd = async (p: ProductCardData | { id: string; name: string; price: number; image_url?: string | null; shop_id?: string }) => {
+  const onAdd = async (p: ProductCardData) => {
     await addToCart({
       id: p.id,
       name: p.name,
-      shopName: (p as any).shop_name || "",
+      shopName: p.shop_name || "",
       price: p.price,
       image_url: p.image_url,
       shop_id: p.shop_id,
@@ -337,15 +224,23 @@ export default function HomeScreen() {
     if (nearBottom) loadMore();
   };
 
+  const promoTitle = banners[0]?.title || "Up to 20% off";
+  const promoSub = banners[0]?.subtitle || "Deals on trusted local shops";
+
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
       <AppMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
+      <View style={styles.promoBar}>
+        <Text style={styles.promoKicker}>ShopTrory</Text>
+        <Text style={styles.promoTitle} numberOfLines={1}>
+          {promoTitle} · {promoSub}
+        </Text>
+      </View>
+
       <View style={styles.topBar}>
         <Pressable onPress={() => setMenuOpen(true)} hitSlop={10} style={styles.iconBtn}>
-          <View style={styles.menuLine} />
-          <View style={[styles.menuLine, { width: 14 }]} />
-          <View style={styles.menuLine} />
+          <BagLogo size={26} />
         </Pressable>
 
         <View style={styles.searchBox}>
@@ -362,19 +257,18 @@ export default function HomeScreen() {
             returnKeyType="search"
           />
           <Pressable hitSlop={8} style={styles.cameraBtn}>
-            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth={1.8}>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth={1.8}>
               <Path d="M4 8h3l2-2h6l2 2h3v11H4V8z" strokeLinecap="round" strokeLinejoin="round" />
               <Circle cx="12" cy="13" r="3.5" />
             </Svg>
           </Pressable>
+          <Pressable style={styles.searchGo}>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={colors.onPrimary} strokeWidth={2.2}>
+              <Circle cx="11" cy="11" r="7" />
+              <Line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </Svg>
+          </Pressable>
         </View>
-
-        <Pressable onPress={() => router.push("/(tabs)/orders")} hitSlop={10} style={styles.iconBtn}>
-          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.text} strokeWidth={2}>
-            <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" />
-            <Path d="M13.73 21a2 2 0 0 1-3.46 0" strokeLinecap="round" strokeLinejoin="round" />
-          </Svg>
-        </Pressable>
 
         <Pressable onPress={() => router.push("/(tabs)/cart")} hitSlop={10} style={styles.iconBtn}>
           <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.text} strokeWidth={2}>
@@ -401,6 +295,44 @@ export default function HomeScreen() {
         }
         contentContainerStyle={styles.scrollContent}
       >
+        {categories.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.catStrip}
+          >
+            {categories.map((c) => (
+              <Pressable
+                key={c.id}
+                style={styles.catChip}
+                onPress={() => router.push("/(tabs)/categories")}
+              >
+                <View style={styles.catDot}>
+                  {c.icon_url ? (
+                    <Image source={{ uri: c.icon_url }} style={styles.catDotImg} contentFit="cover" />
+                  ) : (
+                    <Text style={styles.catEmoji}>{emojiForCategory(c.icon, c.icon_url)}</Text>
+                  )}
+                </View>
+                <Text style={styles.catChipText} numberOfLines={2}>
+                  {c.name}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
+
+        <View style={styles.promoBoxes}>
+          <View style={styles.promoBox}>
+            <Text style={styles.promoBoxTitle}>Free shipping</Text>
+            <Text style={styles.promoBoxSub}>on your first order</Text>
+          </View>
+          <View style={[styles.promoBox, styles.promoBoxAlt]}>
+            <Text style={styles.promoBoxTitle}>Order protection</Text>
+            <Text style={styles.promoBoxSub}>from payment to delivery</Text>
+          </View>
+        </View>
+
         {banners.length > 0 ? (
           <View style={styles.bannerBlock}>
             <ScrollView
@@ -465,51 +397,13 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {/* For You — dynamic groups from real categories with products */}
-        {!search.trim() && forYouGroups.length > 0 ? (
-          <View style={styles.block}>
-            <Text style={styles.forYouHeading}>For You</Text>
-            {forYouGroups.map((group) => (
-              <View key={group.categoryName} style={styles.forYouGroup}>
-                <View style={styles.forYouHeader}>
-                  <Text style={styles.forYouCat}>{group.categoryName}</Text>
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(tabs)/categories",
-                      } as any)
-                    }
-                    hitSlop={8}
-                  >
-                    <Text style={styles.seeAll}>See all</Text>
-                  </Pressable>
-                </View>
-                <View style={styles.simpleGrid}>
-                  {group.products.map((p) => (
-                    <SimpleProductCard
-                      key={p.id}
-                      product={{
-                        id: p.id,
-                        shop_id: p.shop_id,
-                        name: p.name,
-                        price: p.price,
-                        image_url: p.image_url,
-                        original_price: (p as any).original_price,
-                      }}
-                      onAddToCart={onAdd}
-                    />
-                  ))}
-                </View>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {/* Existing Products section — unchanged card design */}
         <View style={styles.block}>
           <SectionHeader title="Products" />
           {initialLoading ? (
-            <ProductSkeletonGrid />
+            <View style={styles.spinnerBox}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.spinnerLabel}>Loading products…</Text>
+            </View>
           ) : filtered.length === 0 ? (
             <Text style={styles.empty}>No products found</Text>
           ) : (
@@ -527,7 +421,7 @@ export default function HomeScreen() {
         {role.type === "guest" ? (
           <View style={styles.guestBox}>
             <Text style={styles.guestText}>Sign in for a better shopping experience</Text>
-            <Pressable style={styles.signBtn} onPress={() => router.push("/auth/sign-in" as any)}>
+            <Pressable style={styles.signBtn} onPress={() => router.push("/auth/login")}>
               <Text style={styles.signBtnText}>Sign in</Text>
             </Pressable>
           </View>
@@ -545,6 +439,30 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  promoBar: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  promoKicker: {
+    backgroundColor: colors.onPrimary,
+    color: colors.primary,
+    fontSize: 10,
+    fontFamily: typography.bodyBold,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  promoTitle: {
+    flex: 1,
+    color: colors.onPrimary,
+    fontFamily: typography.bodySemibold,
+    fontSize: 12,
+  },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -556,28 +474,69 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  menuLine: {
-    width: 18,
-    height: 2,
-    backgroundColor: colors.text,
-    borderRadius: 1,
-    marginVertical: 2,
-  },
   searchBox: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
     borderRadius: radius.pill,
-    paddingHorizontal: 12,
-    height: 40,
+    paddingLeft: 12,
+    paddingRight: 4,
+    height: 42,
   },
   searchInput: { flex: 1, fontSize: typography.small, color: colors.text, padding: 0 },
   cameraBtn: { padding: 2 },
+  searchGo: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   scrollContent: { paddingBottom: 40 },
+  catStrip: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: 10 },
+  catChip: { width: 72, alignItems: "center" },
+  catDot: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primaryMuted,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  catDotImg: { width: "100%", height: "100%" },
+  catEmoji: { fontSize: 22 },
+  catChipText: {
+    marginTop: 6,
+    textAlign: "center",
+    fontSize: 10,
+    lineHeight: 12,
+    color: colors.text,
+    fontFamily: typography.bodyMedium,
+    width: 72,
+  },
+  promoBoxes: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.md,
+  },
+  promoBox: {
+    flex: 1,
+    backgroundColor: "#FFF7E0",
+    borderRadius: radius.md,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#F3E2A8",
+  },
+  promoBoxAlt: { backgroundColor: "#FFF1F0", borderColor: "#FAD4D0" },
+  promoBoxTitle: { fontFamily: typography.bodyBold, fontSize: 12, color: colors.text },
+  promoBoxSub: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   bannerBlock: { marginTop: spacing.md },
   bannerScroll: { paddingHorizontal: spacing.lg },
   bannerSlide: {
@@ -594,49 +553,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.primary,
   },
-  bannerTitle: { color: "#fff", fontFamily: typography.displaySemibold, fontSize: typography.h3 },
-  bannerSub: { color: "rgba(255,255,255,0.9)", marginTop: 4, fontSize: typography.small },
+  bannerTitle: { color: colors.onPrimary, fontFamily: typography.displaySemibold, fontSize: typography.h3 },
+  bannerSub: { color: "rgba(17,17,17,0.75)", marginTop: 4, fontSize: typography.small },
   dots: { flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 8 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
   dotOn: { backgroundColor: colors.primary, width: 16 },
   block: { marginTop: spacing.lg, paddingHorizontal: spacing.lg },
-  forYouHeading: {
-    fontFamily: typography.displaySemibold,
-    fontSize: typography.h3,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  forYouGroup: { marginBottom: spacing.lg },
-  forYouHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.sm,
-  },
-  forYouCat: {
-    fontFamily: typography.bodyBold,
-    fontSize: typography.body,
-    color: colors.text,
-  },
-  seeAll: {
-    color: colors.primary,
-    fontFamily: typography.bodySemibold,
-    fontSize: typography.small,
-  },
-  simpleGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  gridItem: { width: "48%" },
-  skelCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    marginBottom: spacing.md,
-    ...shadow.card,
-  },
+  gridItem: { width: "48.5%" },
+  spinnerBox: { alignItems: "center", paddingVertical: 36, gap: 10 },
+  spinnerLabel: { color: colors.textMuted, fontSize: typography.small },
   empty: { textAlign: "center", color: colors.textMuted, marginVertical: 24 },
   guestBox: {
     margin: spacing.lg,
@@ -659,7 +585,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: radius.pill,
   },
-  signBtnText: { color: "#fff", fontFamily: typography.bodyBold, fontSize: typography.small },
+  signBtnText: { color: colors.onPrimary, fontFamily: typography.bodyBold, fontSize: typography.small },
   toast: {
     position: "absolute",
     bottom: 32,
